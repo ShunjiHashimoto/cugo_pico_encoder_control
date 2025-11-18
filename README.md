@@ -45,3 +45,24 @@ cugo_pico_encoder_control/
 - Pico 側の PWM ピン割り当ては使用する ESC に合わせて変更してください (デフォルトは GP26/GP27)。
 - パケットを 0.5 秒以上受信しないと自動で停止するため、ホスト側は定期的に指令を送ってください。
 - 本ソフトウェアは Apache License 2.0 のもとで配布されています。元プロジェクト (`cugo_ros_motorcontroller`) の著作権表示とライセンス文書は `LICENSE` に含まれており、派生物である本パッケージでも継承しています。
+
+## Encoder Wiring
+| pin | function | 配線色 |
+| --- | ---      | --- |
+|1| A相 | 黄色 |
+|2| 5V | 赤色 |
+|3| B相 | 青色 |
+|4| - | 白色 |
+|5| GND | 黒色 |
+
+### Raspberry Pi Pico
+Pico 版スケッチでは以下の GPIO 割り当てで配線する想定です ( `cugo_pico_encoder_control/cugo_pico_encoder_control.ino` の `PIN_ENCODER_*` 定数)。
+
+- 左モータ A相 (pin1 / 黄色) → GP2
+- 左モータ B相 (pin3 / 青色) → GP8
+- 右モータ A相 (pin1 / 黄色) → GP3
+- 右モータ B相 (pin3 / 青色) → GP9
+- 5V (pin2 / 赤色) → Pico の VBUS (USB 5V) もしくは外部電源から VSYS へ入力している 5V 系
+- GND (pin5 / 黒色) → Pico の任意の GND
+
+Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力のエンコーダをそのまま接続しないでください。オープンコレクタ設定＋3.3V プルアップ、もしくは[レベルシフタ](https://akizukidenshi.com/catalog/g/g113837/)等で 3.3V 以内に収めてから `GP2/GP8/GP3/GP9` へ入力してください。向きが合わない場合はソース内の `PIN_ENCODER_*` を変更すれば任意の GPIO へ再割り当てできます。
