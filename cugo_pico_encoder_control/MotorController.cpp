@@ -102,8 +102,8 @@ void MotorController::setTargetRpm(float target_rpm){
 }
 
 float MotorController::getTargetRpm(){
-    if(!initialized_){
-    return;
+  if(!initialized_){
+    return 0.0;
   }
   return target_rpm_;
 }

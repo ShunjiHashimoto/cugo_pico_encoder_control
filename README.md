@@ -31,7 +31,7 @@ cugo_pico_encoder_control/
 1. Arduino IDE (または `arduino-cli`) に「Raspberry Pi Pico / RP2040 by Earle Philhower, III」をインストールし、ボードとして Raspberry Pi Pico を選択します。
 2. `cugo_pico_encoder_control/cugo_pico_encoder_control/cugo_pico_encoder_control.ino` を開き、`PIN_*` 定数や PID ゲイン / エンコーダ分解能、車体諸元（ホイール半径 / トレッド / 減速比）が実機と異なる場合は調整してください。
 3. 動作確認の段階に応じて `TEST_STAGE` マクロを設定できます。`TEST_STAGE=1` でエンコーダカウントのみシリアルへ出力、`TEST_STAGE=2` で一定RPMを指示して MotorController の挙動確認、`TEST_STAGE=3`（デフォルト）で PacketSerial 入出力を使用します。
-4. Pico を USB 接続し、Arduino IDE の「マイコンボードに書き込む」でビルド・転送します（UF2 を手動でコピーする場合は BOOTSEL ボタンを押したまま接続してください）。CLI の場合は `arduino-cli compile --fqbn arduino-pico:rp2040:pico cugo_pico_encoder_control/cugo_pico_encoder_control` → `arduino-cli upload -p /dev/ttyACM0 --fqbn ...` で書き込めます。
+4. Pico を USB 接続し、Arduino IDE の「マイコンボードに書き込む」でビルド・転送します（UF2 を手動でコピーする場合は BOOTSEL ボタンを押したまま接続してください）。CLI の場合は `arduino-cli compile --fqbn rp2040:rp2040:rpipico cugo_pico_encoder_control/cugo_pico_encoder_control` → `arduino-cli upload -p /dev/ttyACM0 --fqbn ...` で書き込めます。
 5. `TEST_STAGE=1/2` はシリアルモニタ (115200 bps) を使って挙動を確認してください。`TEST_STAGE=3` で Pico に書き込んだら、PC 側の ROS パッケージ (例: `cugo_ros2_control2`) を起動し、USB CDC ポートに PacketSerial フォーマットで `v`/`w` を送信します。Pico は受け取った `v`/`w` から左右目標 RPM を算出して制御し、エンコーダカウントを返信します。
 
 ## 通信プロトコル
@@ -71,6 +71,32 @@ Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力の�
 
 ### 開発用 PC / IDE
 - Ubuntu 22.04 LTS + VS Code + Raspberry Pi Pico 拡張機能を使用し、`blink` などのサンプルをビルド。
+
+### Arduino CLI セットアップとビルド
+1. 公式バイナリを入手して配置します（Snap 版では 32bit 依存ライブラリを参照できない場合があるため）。
+    ```bash
+    cd /tmp
+    wget https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz
+    tar xf arduino-cli_latest_Linux_64bit.tar.gz
+    sudo mv arduino-cli /usr/local/bin/
+    ```
+2. 初期設定と Philhower 版 RP2040 コアの登録を行います。
+    ```bash
+    arduino-cli config init
+    arduino-cli config set board_manager.additional_urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+    arduino-cli core update-index
+    arduino-cli core install rp2040:rp2040
+    ```
+3. ライブラリ依存（PacketSerial）を追加します。Servo はボードパッケージ同梱版を利用できます。
+    ```bash
+    arduino-cli lib install PacketSerial
+    ```
+4. スケッチをビルド／書き込みします。`XDG_CACHE_HOME=/path/to/cache arduino-cli ...` のように指定すると、キャッシュを任意ディレクトリへ変更可能です。
+    ```bash
+    arduino-cli compile --fqbn rp2040:rp2040:rpipico cugo_pico_encoder_control/cugo_pico_encoder_control
+    arduino-cli upload  --fqbn rp2040:rp2040:rpipico -p /dev/ttyACM0 cugo_pico_encoder_control/cugo_pico_encoder_control
+    ```
+
 
 ### picotool の導入
 1. ソースを取得。

@@ -21,13 +21,12 @@ class MotorController {
     float getPID_P();
     float getPID_I();
     float getPID_D();
+    void stopOutput();
 
   private:
     void calcRpm();
     void pidControl();
     float limitSpeed();
-    void applyPwmOutput();
-    void stopOutput();
     void applyPwmOutput();
 
     int enc_pin_a_;       // エンコーダカウントピン
