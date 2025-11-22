@@ -8,7 +8,7 @@
 // 2: Manual RPM control (no serial protocol)
 // 3: Full PacketSerial velocity control
 #ifndef TEST_STAGE
-#define TEST_STAGE 3
+#define TEST_STAGE 1
 #endif
 
 namespace {

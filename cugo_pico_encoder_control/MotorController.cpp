@@ -82,14 +82,18 @@ void MotorController::updateEnc(){
   if(LOW == digitalRead(enc_pin_b_)){
     if(!reverse_){
       enc_--;  // PINがLOW & 正転 -> デクリメント
+      Serial.println("enc dec (B LOW)");
     }else{
       enc_++;  // PINがLOW & 逆転 -> インクリメント
+      Serial.println("enc inc (B LOW)");
     }
   }else{
     if(!reverse_){
       enc_++;  // PINがHIGH & 正転 -> インクリメント
+      Serial.println("enc inc (B HIGH)");
     }else{
       enc_--;  // PINがHIGH & 逆転 -> デクリメント
+      Serial.println("enc dec (B HIGH)");
     }
   }
 }

@@ -70,7 +70,7 @@ Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力の�
 ## 開発環境メモ
 
 ### 開発用 PC / IDE
-- Ubuntu 22.04 LTS + VS Code + Raspberry Pi Pico 拡張機能を使用し、`blink` などのサンプルをビルド。
+- Ubuntu 22.04 LTS + VS Code + Arduino 拡張機能 (`arduino-cli` を外部コマンドとして利用)
 
 ### Arduino CLI セットアップとビルド
 1. 公式バイナリを入手して配置します（Snap 版では 32bit 依存ライブラリを参照できない場合があるため）。
@@ -98,58 +98,18 @@ Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力の�
     ```
 
 
-### picotool の導入
-1. ソースを取得。
-    ```bash
-    git clone https://github.com/raspberrypi/picotool
-    cd picotool
-    ```
-2. 依存をインストール。
-    ```bash
-    sudo apt install build-essential pkg-config libusb-1.0-0-dev cmake
-    ```
-3. ビルドとインストール。
-    ```bash
-    mkdir -p build
-    cd build
-    cmake ..
-    make -j
-    sudo cmake --install .
-    ```
-   - これにより `picotool reboot` を含む USB 関連コマンドが有効化される。
+### VS Code での Arduino 拡張利用
+VS Code 上では Arduino 拡張機能を使って `arduino-cli` を呼び出しています
 
-### BOOTSEL を使わずに再書き込みする設定
-1. USB stdio を有効化。
-    ```cmake
-    # blink/CMakeLists.txt
-    pico_enable_stdio_usb(blink 1)
-    pico_enable_stdio_uart(blink 0)
-    ```
-2. アプリで `stdio_init_all()` を呼ぶ。
-    ```c
-    // blink/blink.c
-    int main(void) {
-        stdio_init_all();
-        ...
+1. 拡張ビューで "Arduino" (Microsoft) をインストールします。
+2. `.vscode/settings.json` に以下の設定を追加し、CLI パスや FQBN を固定します。
+    ```json
+    {
+      "arduino.path": "/usr/local/bin/arduino-cli",
+      "arduino.useArduinoCli": true,
+      "arduino.defaultBoard": "rp2040:rp2040:rpipico",
+      "arduino.defaultBaudRate": 115200,
+      "arduino.defaultPort": "/dev/ttyACM0"
     }
     ```
-3. 書き込みフロー。
-    ```bash
-    sudo picotool reboot -f -u
-    sudo picotool load /path/to/blink.elf -fx
-    ```
-   - 上記設定により、実行中の Pico が USB CDC (vid:pid 2e8a:000a) として enumerate され、USB の抜き差しなしで再書き込みできます。
-
-### 動作確認
-1. ビルドして書き込む。
-    ```bash
-    cd ~/src/cugo_pico_encoder_control/blink
-    cmake -B build -S .
-    cmake --build build
-    sudo picotool load build/blink.elf -fx
-    ```
-2. LED の点滅を確認し、続けて BOOTSEL モードへ戻して再書き込みできることを確認。
-    ```bash
-    sudo picotool reboot -f -u
-    sudo picotool load build/blink.elf -fx
-    ```
+3. ステータスバーでボード/ポートを選択し、`Arduino: Verify` や `Arduino: Upload` を実行すれば CLI と同じ手順でビルド／書き込みできます。
