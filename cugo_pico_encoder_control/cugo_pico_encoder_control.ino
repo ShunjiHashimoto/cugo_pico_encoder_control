@@ -86,6 +86,14 @@ long last_reported_count_r = 0;
 bool status_led_state = false;
 bool failsafe_active = false;
 
+struct EncoderEstimate {
+  long last_count;
+  unsigned long last_time_us;
+  float last_motor_rpm;
+};
+
+EncoderEstimate encoder_estimates[kMotorCount];
+
 }  // namespace
 
 uint16_t calculate_checksum(const void* data, size_t size, size_t start = 0) {
@@ -156,6 +164,38 @@ void apply_velocity_targets(float v, float w, float max_rpm) {
   rpm_r = clamp_rpm(rpm_r, max_rpm);
   motor_controllers[MOTOR_LEFT].setTargetRpm(rpm_l);
   motor_controllers[MOTOR_RIGHT].setTargetRpm(rpm_r);
+}
+
+float motor_rpm_to_linear_velocity(int motor_index, float motor_rpm) {
+  float wheel_radius = (motor_index == MOTOR_LEFT) ? kWheelRadiusL : kWheelRadiusR;
+  float wheel_rps = (motor_rpm / 60.0f) / kReductionRatio;
+  return wheel_rps * kTwoPi * wheel_radius;
+}
+
+float update_motor_rpm_estimate(int motor_index, unsigned long now_us) {
+  EncoderEstimate& estimate = encoder_estimates[motor_index];
+  long current_count = motor_controllers[motor_index].getCount();
+  long diff = current_count - estimate.last_count;
+  unsigned long elapsed = now_us - estimate.last_time_us;
+  estimate.last_count = current_count;
+  estimate.last_time_us = now_us;
+  if (elapsed == 0) {
+    return estimate.last_motor_rpm;
+  }
+  float dt = static_cast<float>(elapsed) * 1e-6f;
+  float motor_rev = static_cast<float>(diff) / static_cast<float>(kPulsePerRound);
+  float motor_rps = motor_rev / dt;
+  estimate.last_motor_rpm = motor_rps * 60.0f;
+  return estimate.last_motor_rpm;
+}
+
+void init_encoder_estimates() {
+  unsigned long now = micros();
+  for (int i = 0; i < kMotorCount; ++i) {
+    encoder_estimates[i].last_count = motor_controllers[i].getCount();
+    encoder_estimates[i].last_time_us = now;
+    encoder_estimates[i].last_motor_rpm = 0.0f;
+  }
 }
 
 void set_motor_cmd_binary(const uint8_t* packet, size_t size) {
@@ -283,6 +323,7 @@ void setup() {
   Serial.begin(115200);
   init_status_led();
   init_motor_controllers();
+  init_encoder_estimates();
 #if TEST_STAGE >= 3
   packetSerial.begin(115200);
   packetSerial.setStream(&Serial);
@@ -317,10 +358,26 @@ void loop() {
   static unsigned long last_print = 0;
   if (millis() - last_print > 200) {
     last_print = millis();
+    long enc_l = motor_controllers[MOTOR_LEFT].getCount();
+    long enc_r = motor_controllers[MOTOR_RIGHT].getCount();
+    float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, micros());
+    float rpm_r = update_motor_rpm_estimate(MOTOR_RIGHT, micros());
+    float vel_l = motor_rpm_to_linear_velocity(MOTOR_LEFT, rpm_l);
+    float vel_r = motor_rpm_to_linear_velocity(MOTOR_RIGHT, rpm_r);
     Serial.print("enc_l:");
-    Serial.print(motor_controllers[MOTOR_LEFT].getCount());
+    Serial.print(enc_l);
     Serial.print(", enc_r:");
-    Serial.println(motor_controllers[MOTOR_RIGHT].getCount());
+    Serial.print(enc_r);
+    Serial.print(", rpm_l:");
+    Serial.print(rpm_l, 2);
+    Serial.print(", rpm_r:");
+    Serial.print(rpm_r, 2);
+    Serial.print(", v_l:");
+    Serial.print(vel_l, 3);
+    Serial.print("[m/s]");
+    Serial.print(", v_r:");
+    Serial.print(vel_r, 3);
+    Serial.println("[m/s]");
   }
 #elif TEST_STAGE == 2
   static unsigned long last_update = 0;
@@ -329,7 +386,18 @@ void loop() {
     float test_rpm = 100.0f;
     motor_controllers[MOTOR_LEFT].setTargetRpm(test_rpm);
     motor_controllers[MOTOR_RIGHT].setTargetRpm(test_rpm);
-    Serial.println("[TEST_STAGE2] Commanded RPM:" + String(test_rpm));
+    float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, micros());
+    float rpm_r = update_motor_rpm_estimate(MOTOR_RIGHT, micros());
+    Serial.print("[TEST_STAGE2] Cmd RPM:");
+    Serial.print(test_rpm, 1);
+    Serial.print(", meas_l:");
+    Serial.print(rpm_l, 1);
+    Serial.print(", meas_r:");
+    Serial.print(rpm_r, 1);
+    Serial.print(", v_l:");
+    Serial.print(motor_rpm_to_linear_velocity(MOTOR_LEFT, rpm_l), 3);
+    Serial.print(", v_r:");
+    Serial.println(motor_rpm_to_linear_velocity(MOTOR_RIGHT, rpm_r), 3);
   }
 #endif
 }
