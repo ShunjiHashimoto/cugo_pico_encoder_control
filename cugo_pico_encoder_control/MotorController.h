@@ -58,6 +58,7 @@ class MotorController {
     int stop_cnt;         // 速度ゼロで不感地帯の制御値をいったんリセット
 
     bool initialized_;
+    uint8_t last_enc_state_;
 
 };
 

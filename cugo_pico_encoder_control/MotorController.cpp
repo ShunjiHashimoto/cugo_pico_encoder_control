@@ -38,6 +38,10 @@ MotorController::MotorController(int enc_pin_a, int enc_pin_b, int pwm_pin, int 
   analogWrite(pwm_pin_, 0);
   digitalWrite(dir_pin_, LOW);
 
+  int initial_a = digitalRead(enc_pin_a_);
+  int initial_b = digitalRead(enc_pin_b_);
+  last_enc_state_ = static_cast<uint8_t>((initial_a << 1) | (initial_b & 0x01));
+
   initialized_ = true;
 }
 
@@ -79,23 +83,29 @@ void MotorController::updateEnc(){
     return;
   }
 
-  if(LOW == digitalRead(enc_pin_b_)){
-    if(!reverse_){
-      enc_--;  // PINがLOW & 正転 -> デクリメント
-      Serial.println("enc dec (B LOW)");
-    }else{
-      enc_++;  // PINがLOW & 逆転 -> インクリメント
-      Serial.println("enc inc (B LOW)");
-    }
-  }else{
-    if(!reverse_){
-      enc_++;  // PINがHIGH & 正転 -> インクリメント
-      Serial.println("enc inc (B HIGH)");
-    }else{
-      enc_--;  // PINがHIGH & 逆転 -> デクリメント
-      Serial.println("enc dec (B HIGH)");
-    }
+  bool a_state = digitalRead(enc_pin_a_);
+  bool b_state = digitalRead(enc_pin_b_);
+  uint8_t state = static_cast<uint8_t>((a_state << 1) | (b_state ? 1 : 0));
+  if (state == last_enc_state_) {
+    return;
   }
+
+  static const int8_t transition_table[4][4] = {
+      { 0, -1,  1,  0},
+      { 1,  0,  0, -1},
+      {-1,  0,  0,  1},
+      { 0,  1, -1,  0},
+  };
+
+  int8_t delta = transition_table[last_enc_state_][state];
+  if (delta != 0) {
+    if (reverse_) {
+      delta = -delta;
+    }
+    enc_ += delta;
+  }
+
+  last_enc_state_ = state;
 }
 
 void MotorController::setTargetRpm(float target_rpm){

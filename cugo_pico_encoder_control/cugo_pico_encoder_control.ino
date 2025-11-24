@@ -43,6 +43,11 @@ constexpr uint8_t PIN_ENCODER_L_A = 2;
 constexpr uint8_t PIN_ENCODER_L_B = 8;
 constexpr uint8_t PIN_ENCODER_R_A = 3;
 constexpr uint8_t PIN_ENCODER_R_B = 9;
+#if defined(LED_BUILTIN)
+constexpr uint8_t PIN_STATUS_LED = LED_BUILTIN;
+#else
+constexpr uint8_t PIN_STATUS_LED = 25;  // Onboard LED for RP2040
+#endif
 
 constexpr uint32_t kFailSafeThreshold = 5;  // 100ms * 5 = 0.5s
 constexpr uint32_t kMicro10ms = 10000;
@@ -78,6 +83,8 @@ volatile int com_fail_count = 0;
 
 long last_reported_count_l = 0;
 long last_reported_count_r = 0;
+bool status_led_state = false;
+bool failsafe_active = false;
 
 }  // namespace
 
@@ -165,6 +172,10 @@ void set_motor_cmd_binary(const uint8_t* packet, size_t size) {
   float target_w = read_float_from_buf(packet, TARGET_W_PTR);
   apply_velocity_targets(target_v, target_w, max_rpm);
   com_fail_count = 0;
+  if (failsafe_active) {
+    failsafe_active = false;
+    set_status_led(false);
+  }
 }
 
 void send_encoder_feedback() {
@@ -200,6 +211,21 @@ void rightEncHandler() {
   motor_controllers[MOTOR_RIGHT].updateEnc();
 }
 
+void set_status_led(bool on) {
+  status_led_state = on;
+  digitalWrite(PIN_STATUS_LED, on ? HIGH : LOW);
+}
+
+void toggle_status_led() {
+  set_status_led(!status_led_state);
+}
+
+void init_status_led() {
+  pinMode(PIN_STATUS_LED, OUTPUT);
+  failsafe_active = false;
+  set_status_led(false);
+}
+
 void init_motor_controllers() {
   pinMode(PIN_ENCODER_L_A, INPUT_PULLUP);
   pinMode(PIN_ENCODER_L_B, INPUT_PULLUP);
@@ -213,8 +239,10 @@ void init_motor_controllers() {
                                                   kPulsePerRound, kMaxServoPwm, kControlHz,
                                                   kLpf, kRightKp, kRightKi, kRightKd, kRightReverse);
 
-  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_L_A), leftEncHandler, RISING);
-  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_R_A), rightEncHandler, RISING);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_L_A), leftEncHandler, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_L_B), leftEncHandler, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_R_A), rightEncHandler, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_R_B), rightEncHandler, CHANGE);
 }
 
 void stop_motor_immediately() {
@@ -236,17 +264,24 @@ void job_100ms() {
 #if TEST_STAGE >= 3
   com_fail_count++;
   if (com_fail_count > static_cast<int>(kFailSafeThreshold)) {
+    if (!failsafe_active) {
+      failsafe_active = true;
+      set_status_led(true);
+    }
     stop_motor_immediately();
   }
 #endif
 }
 
 void job_1000ms() {
-  // reserved for diagnostics
+  if (!failsafe_active) {
+    toggle_status_led();
+  }
 }
 
 void setup() {
   Serial.begin(115200);
+  init_status_led();
   init_motor_controllers();
 #if TEST_STAGE >= 3
   packetSerial.begin(115200);
