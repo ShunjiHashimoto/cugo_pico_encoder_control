@@ -10,7 +10,7 @@ Raspberry Pi Pico で CuGo の左右ホイール A/B 相エンコーダを直接
 
 ## 必要環境
 - Raspberry Pi Pico (Arduino Mbed OS RP2040 core を想定)
-- PWM 入力に対応したモータドライバ (H ブリッジ / Phase-Enable など)
+- PWM 入力に対応したモータドライバ (H ブリッジ / Phase-Enable など) ※想定ハード: Cytron MDDA20A
 - 左右ホイールの 2 相エンコーダ (A 相を GPIO 2/3, B 相を GPIO 8/9 などに接続)
 - USB ケーブル (PC と Pico を接続)
 
@@ -46,27 +46,34 @@ cugo_pico_encoder_control/
 - パケットを 0.5 秒以上受信しないと自動で停止するため、ホスト側は定期的に指令を送ってください。
 - 本ソフトウェアは Apache License 2.0 のもとで配布されています。元プロジェクト (`cugo_ros_motorcontroller`) の著作権表示とライセンス文書は `LICENSE` に含まれており、派生物である本パッケージでも継承しています。
 
-## エンコーダ配線
-| pin | function | 配線色 |
-| --- | ---      | --- |
-|1| A相 | 黄色 |
-|2| 5V | 赤色 |
-|3| B相 | 青色 |
-|4| - | 白色 |
-|5| GND | 黒色 |
+--- 
+## Raspberry Pi Pico での配線
+<img src=docs/pico_pinout.png width=60%>     
 
-### Raspberry Pi Pico での配線
+### エンコーダ (AMT102-V 例)
 Pico 版スケッチでは以下の GPIO 割り当てで配線する想定です ( `cugo_pico_encoder_control/cugo_pico_encoder_control.ino` の `PIN_ENCODER_*` 定数)。
 
-- 左モータ A相 (pin1 / 黄色) → GP2
-- 左モータ B相 (pin3 / 青色) → GP8
-- 右モータ A相 (pin1 / 黄色) → GP3
-- 右モータ B相 (pin3 / 青色) → GP9
-- 5V (pin2 / 赤色) → Pico の VBUS (USB 5V) もしくは外部電源から VSYS へ入力している 5V 系
-- GND (pin5 / 黒色) → Pico の任意の GND
+| 信号 | 左ホイール GPIO | 右ホイール GPIO | 備考 |
+| --- | --- | --- | --- |
+| A相 (黄色 / pin1) | GP2 | GP3 | `PIN_ENCODER_L_A` / `PIN_ENCODER_R_A` |
+| B相 (青色 / pin3) | GP8 | GP9 | `PIN_ENCODER_L_B` / `PIN_ENCODER_R_B` |
+| Z相 (紫色 / pin4) | 未配線 (NC) | 未配線 (NC) | 本スケッチでは未使用 |
+| 5V (橙色 / pin2) | VBUS または外部 5V | VBUS または外部 5V | エンコーダ電源 |
+| GND (茶色 / pin5) | 任意の GND | 任意の GND | Pico と共通 GND に接続 |
 
 Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力のエンコーダをそのまま接続しないでください。オープンコレクタ設定＋3.3V プルアップ、もしくは[レベルシフタ](https://akizukidenshi.com/catalog/g/g113837/)等で 3.3V 以内に収めてから `GP2/GP8/GP3/GP9` へ入力してください。向きが合わない場合はソース内の `PIN_ENCODER_*` を変更すれば任意の GPIO へ再割り当てできます。
 
+### モータドライバ (PWM/Dir)
+`cugo_pico_encoder_control.ino` のデフォルト定数では、モータドライバの PWM / 方向ピンを以下の GPIO に割り当てています。Cytron MDDA20A（デュアル DC モータドライバ、PWM+DIR 方式）を想定した配線です。
+
+| モータ | PWM ピン (`PIN_MOTOR_*_PWM`) | DIR ピン (`PIN_MOTOR_*_DIR`) |
+| --- | --- | --- |
+| 左車輪 | GP26 | GP16 |
+| 右車輪 | GP27 | GP17 |
+
+Phase/Enable 形式のドライバであれば PWM ピンを Enable へ、DIR ピンを Phase へ接続してください。IN/IN 形式の H ブリッジを使う場合は、PWM ピンを片側入力に接続し、もう片側入力を DIR で制御できるよう配線します。別の GPIO を使いたい場合は `.ino` 内の `PIN_MOTOR_*` 定数を書き換えれば対応できます (PWM 可能な GPIO を割り当ててください)。
+
+--- 
 ## 開発環境メモ
 
 ### 開発用 PC / IDE
