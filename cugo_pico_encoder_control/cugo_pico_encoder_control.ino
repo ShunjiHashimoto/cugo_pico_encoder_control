@@ -8,14 +8,14 @@
 // 2: Manual RPM control (no serial protocol)
 // 3: Full PacketSerial velocity control
 #ifndef TEST_STAGE
-#define TEST_STAGE 1
+#define TEST_STAGE 2
 #endif
 
 namespace {
 constexpr int kMotorCount = 2;
 constexpr int MOTOR_LEFT = 0;
 constexpr int MOTOR_RIGHT = 1;
-constexpr int kPulsePerRound = 2048;
+constexpr int kPulsePerRound = 8192; // 2048
 constexpr int kMaxServoPwm = 600;
 constexpr int kControlHz = 100;
 constexpr float kLpf = 0.95f;
@@ -25,8 +25,8 @@ constexpr float kLeftKd = 0.1f;
 constexpr float kRightKp = 1.5f;
 constexpr float kRightKi = 0.02f;
 constexpr float kRightKd = 0.1f;
-constexpr bool kLeftReverse = false;
-constexpr bool kRightReverse = true;
+constexpr bool kLeftReverse = true;
+constexpr bool kRightReverse = false;
 
 // Robot physical parameters
 constexpr float kWheelRadiusL = 0.0825f;   // [m]
@@ -39,10 +39,11 @@ constexpr uint8_t PIN_MOTOR_L_PWM = 26;  // GP26 (PWM capable)
 constexpr uint8_t PIN_MOTOR_L_DIR = 16;
 constexpr uint8_t PIN_MOTOR_R_PWM = 27;  // GP27 (PWM capable)
 constexpr uint8_t PIN_MOTOR_R_DIR = 17;
-constexpr uint8_t PIN_ENCODER_L_A = 2;
-constexpr uint8_t PIN_ENCODER_L_B = 8;
-constexpr uint8_t PIN_ENCODER_R_A = 3;
-constexpr uint8_t PIN_ENCODER_R_B = 9;
+constexpr uint8_t PIN_ENCODER_L_A = 3;  // swapped: left A -> GP3
+constexpr uint8_t PIN_ENCODER_L_B = 9;  // swapped: left B -> GP9
+constexpr uint8_t PIN_ENCODER_R_A = 2;  // swapped: right A -> GP2
+constexpr uint8_t PIN_ENCODER_R_B = 8;  // swapped: right B -> GP8
+constexpr uint8_t PIN_USER_BUTTON = 15;  // active-low momentary (connect to GND)
 #if defined(LED_BUILTIN)
 constexpr uint8_t PIN_STATUS_LED = LED_BUILTIN;
 #else
@@ -85,6 +86,7 @@ long last_reported_count_l = 0;
 long last_reported_count_r = 0;
 bool status_led_state = false;
 bool failsafe_active = false;
+bool motor_enabled = false;
 
 struct EncoderEstimate {
   long last_count;
@@ -95,6 +97,9 @@ struct EncoderEstimate {
 EncoderEstimate encoder_estimates[kMotorCount];
 
 }  // namespace
+
+// Forward declarations for helpers used before definition
+void stop_motor_immediately();
 
 uint16_t calculate_checksum(const void* data, size_t size, size_t start = 0) {
   uint16_t checksum = 0;
@@ -266,6 +271,22 @@ void init_status_led() {
   set_status_led(false);
 }
 
+void init_user_button() {
+  pinMode(PIN_USER_BUTTON, INPUT_PULLUP);
+}
+
+void update_motor_enable_from_button() {
+  static bool last_pressed = false;
+  bool pressed = digitalRead(PIN_USER_BUTTON) == LOW;
+  if (pressed && !last_pressed) {
+    motor_enabled = !motor_enabled;
+    if (!motor_enabled) {
+      stop_motor_immediately();
+    }
+  }
+  last_pressed = pressed;
+}
+
 void init_motor_controllers() {
   pinMode(PIN_ENCODER_L_A, INPUT_PULLUP);
   pinMode(PIN_ENCODER_L_B, INPUT_PULLUP);
@@ -322,6 +343,7 @@ void job_1000ms() {
 void setup() {
   Serial.begin(115200);
   init_status_led();
+  init_user_button();
   init_motor_controllers();
   init_encoder_estimates();
 #if TEST_STAGE >= 3
@@ -336,6 +358,7 @@ void setup() {
 }
 
 void loop() {
+  update_motor_enable_from_button();
   current_time = micros();
   if (current_time - prev_time_10ms > kMicro10ms) {
     job_10ms();
@@ -383,13 +406,13 @@ void loop() {
   static unsigned long last_update = 0;
   if (millis() - last_update > 1000) {
     last_update = millis();
-    float test_rpm = 100.0f;
-    motor_controllers[MOTOR_LEFT].setTargetRpm(test_rpm);
-    motor_controllers[MOTOR_RIGHT].setTargetRpm(test_rpm);
+    float test_rpm_r = motor_enabled ? 20.0f : 0.0f;  // 右車輪だけ回す
+    motor_controllers[MOTOR_LEFT].setTargetRpm(0.0f);
+    motor_controllers[MOTOR_RIGHT].setTargetRpm(test_rpm_r);
     float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, micros());
     float rpm_r = update_motor_rpm_estimate(MOTOR_RIGHT, micros());
     Serial.print("[TEST_STAGE2] Cmd RPM:");
-    Serial.print(test_rpm, 1);
+    Serial.print(test_rpm_r, 1);
     Serial.print(", meas_l:");
     Serial.print(rpm_l, 1);
     Serial.print(", meas_r:");
