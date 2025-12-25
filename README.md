@@ -69,8 +69,8 @@ Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力の�
 
 | モータ | PWM ピン (`PIN_MOTOR_*_PWM`) | DIR ピン (`PIN_MOTOR_*_DIR`) |
 | --- | --- | --- |
-| 左車輪 | GP26 | GP16 |
-| 右車輪 | GP27 | GP17 |
+| 左車輪 | GP17 | GP16 |
+| 右車輪 | GP19 | GP18 |
 
 Phase/Enable 形式のドライバであれば PWM ピンを Enable へ、DIR ピンを Phase へ接続してください。IN/IN 形式の H ブリッジを使う場合は、PWM ピンを片側入力に接続し、もう片側入力を DIR で制御できるよう配線します。別の GPIO を使いたい場合は `.ino` 内の `PIN_MOTOR_*` 定数を書き換えれば対応できます (PWM 可能な GPIO を割り当ててください)。
 
@@ -85,7 +85,7 @@ Phase/Enable 形式のドライバであれば PWM ピンを Enable へ、DIR �
 | GP21 | LED1 | インジケータ LED |
 | GP20 | BAT_LED_PWM | バッテリー LED の PWM 制御 |
 | GP14 | SW1 | ユーザスイッチ入力 |
-| GP36 | ADC_BAT | バッテリー電圧の ADC 取得 |
+| GP26 | ADC_BAT | バッテリー電圧の ADC 取得 |
 
 --- 
 ## 開発環境メモ

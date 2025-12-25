@@ -35,15 +35,15 @@ constexpr float kTread = 0.394f;           // [m]
 constexpr float kReductionRatio = 30.0f;   // motor -> wheel gear ratio
 
 // Pico pin assignment (GPIO numbers)
-constexpr uint8_t PIN_MOTOR_L_PWM = 26;  // GP26 (PWM capable)
+constexpr uint8_t PIN_MOTOR_L_PWM = 17;  // GP17 (PWM capable)
 constexpr uint8_t PIN_MOTOR_L_DIR = 16;
-constexpr uint8_t PIN_MOTOR_R_PWM = 27;  // GP27 (PWM capable)
-constexpr uint8_t PIN_MOTOR_R_DIR = 17;
+constexpr uint8_t PIN_MOTOR_R_PWM = 19;  // GP19 (PWM capable)
+constexpr uint8_t PIN_MOTOR_R_DIR = 18;
 constexpr uint8_t PIN_ENCODER_L_A = 3;  // swapped: left A -> GP3
 constexpr uint8_t PIN_ENCODER_L_B = 9;  // swapped: left B -> GP9
 constexpr uint8_t PIN_ENCODER_R_A = 2;  // swapped: right A -> GP2
 constexpr uint8_t PIN_ENCODER_R_B = 8;  // swapped: right B -> GP8
-constexpr uint8_t PIN_USER_BUTTON = 15;  // active-low momentary (connect to GND)
+constexpr uint8_t PIN_USER_BUTTON = 14;  // active-low momentary (connect to GND)
 #if defined(LED_BUILTIN)
 constexpr uint8_t PIN_STATUS_LED = LED_BUILTIN;
 #else
