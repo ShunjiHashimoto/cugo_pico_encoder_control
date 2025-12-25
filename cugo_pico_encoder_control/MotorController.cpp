@@ -5,7 +5,7 @@ MotorController::MotorController(){
   initialized_ = false;
 }
 
-MotorController::MotorController(int enc_pin_a, int enc_pin_b, int pwm_pin, int dir_pin, int pulse_per_round, int max_speed, int control_hz, float lpf_rate, float kp, float ki, float kd, bool reverse){
+MotorController::MotorController(int enc_pin_a, int enc_pin_b, int pwm_pin, int dir_pin, int pulse_per_round, int max_speed, int control_hz, float lpf_rate, float kp, float ki, float kd, bool reverse_encoder, bool reverse_motor){
 
   // 引数で変数を初期化
   enc_pin_a_ = enc_pin_a;
@@ -19,7 +19,8 @@ MotorController::MotorController(int enc_pin_a, int enc_pin_b, int pwm_pin, int 
   kp_ = kp;
   ki_ = ki;
   kd_ = kd;
-  reverse_ = reverse;
+  reverse_encoder_ = reverse_encoder;
+  reverse_motor_ = reverse_motor;
 
   // 変数の初期化
   speed_ = 0;
@@ -99,7 +100,7 @@ void MotorController::updateEnc(){
 
   int8_t delta = transition_table[last_enc_state_][state];
   if (delta != 0) {
-    if (reverse_) {
+    if (reverse_encoder_) {
       delta = -delta;
     }
     enc_ += delta;
@@ -287,7 +288,7 @@ void MotorController::applyPwmOutput(){
     pwm_value = max_speed_;
   }
   bool forward = (speed_ >= 0);
-  if(reverse_) {
+  if(reverse_motor_) {
     forward = !forward;
   }
   digitalWrite(dir_pin_, forward ? HIGH : LOW);

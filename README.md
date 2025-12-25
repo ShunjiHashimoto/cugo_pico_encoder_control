@@ -11,7 +11,7 @@ Raspberry Pi Pico で CuGo の左右ホイール A/B 相エンコーダを直接
 ## 必要環境
 - Raspberry Pi Pico (Arduino Mbed OS RP2040 core を想定)
 - PWM 入力に対応したモータドライバ (H ブリッジ / Phase-Enable など) ※想定ハード: Cytron MDDA20A
-- 左右ホイールの 2 相エンコーダ (A 相を GPIO 2/3, B 相を GPIO 8/9 などに接続)
+- 左右ホイールの 2 相エンコーダ (A 相を GPIO 2/8, B 相を GPIO 3/9 などに接続)
 - USB ケーブル (PC と Pico を接続)
 
 使用ライブラリ: Servo, PacketSerial
@@ -56,13 +56,13 @@ Pico 版スケッチでは以下の GPIO 割り当てで配線する想定です
 
 | 信号 | 左ホイール GPIO | 右ホイール GPIO | 備考 |
 | --- | --- | --- | --- |
-| A相 (黄色 / pin1) | GP3 | GP2 | `PIN_ENCODER_L_A` / `PIN_ENCODER_R_A` |
-| B相 (青色 / pin3) | GP9 | GP8 | `PIN_ENCODER_L_B` / `PIN_ENCODER_R_B` |
+| A相 (黄色 / pin1) | GP2 | GP8 | `PIN_ENCODER_L_A` / `PIN_ENCODER_R_A` |
+| B相 (青色 / pin3) | GP3 | GP9 | `PIN_ENCODER_L_B` / `PIN_ENCODER_R_B` |
 | Z相 (紫色 / pin4) | 未配線 (NC) | 未配線 (NC) | 本スケッチでは未使用 |
 | 5V (橙色 / pin2) | VBUS または外部 5V | VBUS または外部 5V | エンコーダ電源 |
 | GND (茶色 / pin5) | 任意の GND | 任意の GND | Pico と共通 GND に接続 |
 
-Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力のエンコーダをそのまま接続しないでください。オープンコレクタ設定＋3.3V プルアップ、もしくは[レベルシフタ](https://akizukidenshi.com/catalog/g/g113837/)等で 3.3V 以内に収めてから `GP3/GP9/GP2/GP8` へ入力してください。向きが合わない場合はソース内の `PIN_ENCODER_*` を変更すれば任意の GPIO へ再割り当てできます。
+Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力のエンコーダをそのまま接続しないでください。オープンコレクタ設定＋3.3V プルアップ、もしくは[レベルシフタ](https://akizukidenshi.com/catalog/g/g113837/)等で 3.3V 以内に収めてから `GP2/GP3/GP8/GP9` へ入力してください。向きが合わない場合はソース内の `PIN_ENCODER_*` を変更すれば任意の GPIO へ再割り当てできます。
 
 ### モータドライバ (PWM/Dir)
 `cugo_pico_encoder_control.ino` のデフォルト定数では、モータドライバの PWM / 方向ピンを以下の GPIO に割り当てています。Cytron MDDA20A（デュアル DC モータドライバ、PWM+DIR 方式）を想定した配線です。

@@ -8,7 +8,7 @@ class MotorController {
 
   public:
     MotorController();
-    MotorController(int enc_pin_a, int enc_pin_b, int pwm_pin, int dir_pin, int pulse_per_round, int max_speed, int control_hz, float lpf_rate, float kp, float ki, float kd, bool reverse);
+    MotorController(int enc_pin_a, int enc_pin_b, int pwm_pin, int dir_pin, int pulse_per_round, int max_speed, int control_hz, float lpf_rate, float kp, float ki, float kd, bool reverse_encoder, bool reverse_motor);
     void driveMotor();
     //static void ChangedEncPin();
     void updateEnc();
@@ -53,7 +53,8 @@ class MotorController {
     float disp_d;         // 表示用
     float prev_p_;        // 前ステップのP
     float prev_i_;        // 前ステップのI
-    bool reverse_;        //
+    bool reverse_encoder_;
+    bool reverse_motor_;
 
     int stop_cnt;         // 速度ゼロで不感地帯の制御値をいったんリセット
 

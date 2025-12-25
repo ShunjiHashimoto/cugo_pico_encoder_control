@@ -25,8 +25,10 @@ constexpr float kLeftKd = 0.1f;
 constexpr float kRightKp = 1.5f;
 constexpr float kRightKi = 0.02f;
 constexpr float kRightKd = 0.1f;
-constexpr bool kLeftReverse = false;
-constexpr bool kRightReverse = true;
+constexpr bool kLeftEncoderReverse = false;
+constexpr bool kRightEncoderReverse = true;
+constexpr bool kLeftMotorReverse = true;
+constexpr bool kRightMotorReverse = true;
 
 // Robot physical parameters
 constexpr float kWheelRadiusL = 0.0825f;   // [m]
@@ -39,11 +41,11 @@ constexpr uint8_t PIN_MOTOR_L_PWM = 17;  // GP17 (PWM capable)
 constexpr uint8_t PIN_MOTOR_L_DIR = 16;
 constexpr uint8_t PIN_MOTOR_R_PWM = 19;  // GP19 (PWM capable)
 constexpr uint8_t PIN_MOTOR_R_DIR = 18;
-constexpr uint8_t PIN_ENCODER_L_A = 3;  // swapped: left A -> GP3
-constexpr uint8_t PIN_ENCODER_L_B = 9;  // swapped: left B -> GP9
-constexpr uint8_t PIN_ENCODER_R_A = 2;  // swapped: right A -> GP2
-constexpr uint8_t PIN_ENCODER_R_B = 8;  // swapped: right B -> GP8
-constexpr uint8_t PIN_USER_BUTTON = 14;  // active-low momentary (connect to GND)
+constexpr uint8_t PIN_ENCODER_L_A = 2;  // left A -> GP2
+constexpr uint8_t PIN_ENCODER_L_B = 3;  // left B -> GP3
+constexpr uint8_t PIN_ENCODER_R_A = 8;  // right A -> GP8
+constexpr uint8_t PIN_ENCODER_R_B = 9;  // right B -> GP9
+constexpr uint8_t PIN_USER_BUTTON = 15;  // SW5 active-low (connect to GND)
 #if defined(LED_BUILTIN)
 constexpr uint8_t PIN_STATUS_LED = LED_BUILTIN;
 #else
@@ -276,15 +278,13 @@ void init_user_button() {
 }
 
 void update_motor_enable_from_button() {
-  static bool last_pressed = false;
   bool pressed = digitalRead(PIN_USER_BUTTON) == LOW;
-  if (pressed && !last_pressed) {
-    motor_enabled = !motor_enabled;
+  if (pressed != motor_enabled) {
+    motor_enabled = pressed;
     if (!motor_enabled) {
       stop_motor_immediately();
     }
   }
-  last_pressed = pressed;
 }
 
 void init_motor_controllers() {
@@ -295,10 +295,10 @@ void init_motor_controllers() {
 
   motor_controllers[MOTOR_LEFT] = MotorController(PIN_ENCODER_L_A, PIN_ENCODER_L_B, PIN_MOTOR_L_PWM, PIN_MOTOR_L_DIR,
                                                  kPulsePerRound, kMaxServoPwm, kControlHz,
-                                                 kLpf, kLeftKp, kLeftKi, kLeftKd, kLeftReverse);
+                                                 kLpf, kLeftKp, kLeftKi, kLeftKd, kLeftEncoderReverse, kLeftMotorReverse);
   motor_controllers[MOTOR_RIGHT] = MotorController(PIN_ENCODER_R_A, PIN_ENCODER_R_B, PIN_MOTOR_R_PWM, PIN_MOTOR_R_DIR,
                                                   kPulsePerRound, kMaxServoPwm, kControlHz,
-                                                  kLpf, kRightKp, kRightKi, kRightKd, kRightReverse);
+                                                  kLpf, kRightKp, kRightKi, kRightKd, kRightEncoderReverse, kRightMotorReverse);
 
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_L_A), leftEncHandler, CHANGE);
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_L_B), leftEncHandler, CHANGE);
@@ -315,8 +315,12 @@ void stop_motor_immediately() {
 
 void job_10ms() {
 #if TEST_STAGE >= 2
-  for (int i = 0; i < kMotorCount; ++i) {
-    motor_controllers[i].driveMotor();
+  if (motor_enabled) {
+    for (int i = 0; i < kMotorCount; ++i) {
+      motor_controllers[i].driveMotor();
+    }
+  } else {
+    stop_motor_immediately();
   }
 #endif
 }
@@ -406,13 +410,13 @@ void loop() {
   static unsigned long last_update = 0;
   if (millis() - last_update > 1000) {
     last_update = millis();
-    float test_rpm_r = motor_enabled ? 20.0f : 0.0f;  // 右車輪だけ回す
-    motor_controllers[MOTOR_LEFT].setTargetRpm(0.0f);
-    motor_controllers[MOTOR_RIGHT].setTargetRpm(test_rpm_r);
+    float test_rpm = motor_enabled ? 20.0f : 0.0f;
+    motor_controllers[MOTOR_LEFT].setTargetRpm(test_rpm);
+    motor_controllers[MOTOR_RIGHT].setTargetRpm(test_rpm);
     float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, micros());
     float rpm_r = update_motor_rpm_estimate(MOTOR_RIGHT, micros());
     Serial.print("[TEST_STAGE2] Cmd RPM:");
-    Serial.print(test_rpm_r, 1);
+    Serial.print(test_rpm, 1);
     Serial.print(", meas_l:");
     Serial.print(rpm_l, 1);
     Serial.print(", meas_r:");
