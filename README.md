@@ -74,6 +74,19 @@ Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力の�
 
 Phase/Enable 形式のドライバであれば PWM ピンを Enable へ、DIR ピンを Phase へ接続してください。IN/IN 形式の H ブリッジを使う場合は、PWM ピンを片側入力に接続し、もう片側入力を DIR で制御できるよう配線します。別の GPIO を使いたい場合は `.ino` 内の `PIN_MOTOR_*` 定数を書き換えれば対応できます (PWM 可能な GPIO を割り当ててください)。
 
+---
+## 追加ピンアサイン
+以下の GPIO は周辺機能用に割り当てています。
+
+| GPIO | 機能 | 備考 |
+| --- | --- | --- |
+| GP4 | BUZZER | ブザー出力 |
+| GP22 | LED2 | インジケータ LED |
+| GP21 | LED1 | インジケータ LED |
+| GP20 | BAT_LED_PWM | バッテリー LED の PWM 制御 |
+| GP14 | SW1 | ユーザスイッチ入力 |
+| GP36 | ADC_BAT | バッテリー電圧の ADC 取得 |
+
 --- 
 ## 開発環境メモ
 
@@ -99,7 +112,7 @@ Phase/Enable 形式のドライバであれば PWM ピンを Enable へ、DIR �
     ```bash
     arduino-cli lib install PacketSerial
     ```
-4. スケッチをビルド／書き込みします。`XDG_CACHE_HOME=/path/to/cache arduino-cli ...` のように指定すると、キャッシュを任意ディレクトリへ変更可能です。
+4. スケッチをビルド／書き込みします。`XDG_CACHE_HOME=/path/to/cache arduino-cli ...` のように指定すると、キャッシュを任意ディレクトリへ変更可能です。Pico 2 (RP2350) を使う場合は FQBN を Pico 2 用に差し替えてください（例: `rp2040:rp2040:rpipico2`。`arduino-cli board listall rp2040:rp2040` で確認できます）。
     ```bash
     arduino-cli compile --fqbn rp2040:rp2040:rpipico cugo_pico_encoder_control/cugo_pico_encoder_control
     arduino-cli upload  --fqbn rp2040:rp2040:rpipico -p /dev/ttyACM0 cugo_pico_encoder_control/cugo_pico_encoder_control
