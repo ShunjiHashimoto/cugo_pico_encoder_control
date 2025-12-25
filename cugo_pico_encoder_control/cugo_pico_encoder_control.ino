@@ -25,8 +25,8 @@ constexpr float kLeftKd = 0.1f;
 constexpr float kRightKp = 1.5f;
 constexpr float kRightKi = 0.02f;
 constexpr float kRightKd = 0.1f;
-constexpr bool kLeftReverse = true;
-constexpr bool kRightReverse = false;
+constexpr bool kLeftReverse = false;
+constexpr bool kRightReverse = true;
 
 // Robot physical parameters
 constexpr float kWheelRadiusL = 0.0825f;   // [m]
