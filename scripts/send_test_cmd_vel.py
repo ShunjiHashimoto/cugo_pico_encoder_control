@@ -12,6 +12,7 @@ import sys
 import time
 
 import serial
+from cobs import cobs
 
 
 HEADER_SIZE = 8
@@ -42,6 +43,10 @@ def build_packet(v: float, w: float) -> bytes:
     return header + body
 
 
+def encode_packet(payload: bytes) -> bytes:
+    return cobs.encode(payload) + b"\x00"
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Send test cmd_vel to Pico (TEST_STAGE=3)")
     parser.add_argument("--port", required=True, help="Serial port, e.g., /dev/ttyACM0")
@@ -55,7 +60,7 @@ def parse_args():
 def main():
     args = parse_args()
     interval = 1.0 / args.hz if args.hz > 0 else 0.1
-    pkt = build_packet(args.v, args.w)
+    pkt = encode_packet(build_packet(args.v, args.w))
 
     try:
         ser = serial.Serial(args.port, 115200, timeout=0.05)
@@ -70,7 +75,17 @@ def main():
             sent += 1
             ser.write(pkt)
             time.sleep(0.005)
-            resp = ser.read(PACKET_SIZE)
+            framed = ser.read_until(b"\x00")
+            if not framed:
+                if interval > 0:
+                    time.sleep(interval)
+                continue
+            try:
+                resp = cobs.decode(framed[:-1])
+            except cobs.DecodeError:
+                if interval > 0:
+                    time.sleep(interval)
+                continue
             if len(resp) == PACKET_SIZE:
                 # Body 0-3: enc L, 4-7: enc R (int32 little-endian)
                 enc_l = struct.unpack_from("<l", resp, HEADER_SIZE + 0)[0]
