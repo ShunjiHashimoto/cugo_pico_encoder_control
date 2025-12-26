@@ -30,10 +30,20 @@ cugo_pico_encoder_control/
 ## 使い方
 1. Arduino IDE (または `arduino-cli`) に「Raspberry Pi Pico / RP2040 by Earle Philhower, III」をインストールし、ボードとして Raspberry Pi Pico を選択します。
 2. `cugo_pico_encoder_control/cugo_pico_encoder_control/cugo_pico_encoder_control.ino` を開き、`PIN_*` 定数や PID ゲイン / エンコーダ分解能、車体諸元（ホイール半径 / トレッド / 減速比）が実機と異なる場合は調整してください。
-3. 動作確認の段階に応じて `TEST_STAGE` マクロを設定できます。`TEST_STAGE=1` でエンコーダカウントのみシリアルへ出力、`TEST_STAGE=2` で一定RPMを指示して MotorController の挙動確認、`TEST_STAGE=3`（デフォルト）で PacketSerial 入出力を使用します。
+3. 動作確認の段階に応じて `TEST_STAGE` マクロを設定できます。`TEST_STAGE=1` でエンコーダカウントのみシリアルへ出力、`TEST_STAGE=2` で一定RPMを指示して MotorController の挙動確認、`TEST_STAGE=3` でコード内指定の `v`/`w` による走行、`TEST_STAGE=4` で PacketSerial 入出力を使用します。
 4. Pico を USB 接続し、Arduino IDE の「マイコンボードに書き込む」でビルド・転送します（UF2 を手動でコピーする場合は BOOTSEL ボタンを押したまま接続してください）。CLI の場合は `arduino-cli compile --fqbn rp2040:rp2040:rpipico cugo_pico_encoder_control/cugo_pico_encoder_control` → `arduino-cli upload -p /dev/ttyACM0 --fqbn ...` で書き込めます。
-5. `TEST_STAGE=1/2` はシリアルモニタ (115200 bps) を使って挙動を確認してください。`TEST_STAGE=3` で Pico に書き込んだら、PC 側の ROS パッケージ (例: `cugo_ros2_control2`) を起動し、USB CDC ポートに PacketSerial フォーマットで `v`/`w` を送信します。Pico は受け取った `v`/`w` から左右目標 RPM を算出して制御し、エンコーダカウントを返信します。
+5. `TEST_STAGE=1/2/3` はシリアルモニタ (115200 bps) を使って挙動を確認してください。`TEST_STAGE=4` で Pico に書き込んだら、PC 側の ROS パッケージ (例: `cugo_ros2_control2`) を起動し、USB CDC ポートに PacketSerial フォーマットで `v`/`w` を送信します。Pico は受け取った `v`/`w` から左右目標 RPM を算出して制御し、エンコーダカウントを返信します。
 6. PC から手軽にテストする場合は `scripts/send_test_cmd_vel.py --port /dev/ttyACM0 --v 0.1 --w 0.0 --hz 10` のように実行すると、指定した `v`/`w` を一定周期で送出し、返信のエンコーダカウントを表示します（pyserial が必要）。
+
+## TEST_STAGE 3（コード内の v/w 指定）メモ
+`cugo_pico_encoder_control.ino` の `kTestTargetV` と `kTestTargetW` を書き換えることで、Pico 単体で走行テストできます。
+
+- 直進: `kTestTargetW = 0.0f` のまま `kTestTargetV` を調整
+- その場旋回: `kTestTargetV = 0.0f` にして `kTestTargetW` を設定
+- 旋回半径の目安: `w = v / R`（R は旋回半径 [m]）
+- 片輪ほぼ停止で旋回させる目安: `w ≈ 2*v/kTread`（`kTread = 0.394`）
+
+低速から試す場合は `kTestTargetV = 0.01f`、その場旋回なら `kTestTargetW = 0.05f` 付近から試すと安全です。回転方向は `w` の符号で切り替えできます。
 
 ## 通信プロトコル
 送受信ともに 8 バイトのヘッダ + 64 バイトのボディで構成します。ヘッダ 6〜7 バイト目はボディのチェックサム (16-bit one's complement)。

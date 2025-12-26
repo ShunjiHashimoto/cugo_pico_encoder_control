@@ -6,9 +6,10 @@
 // Test stage selector
 // 1: Encoder-only logging
 // 2: Manual RPM control (no serial protocol)
-// 3: Full PacketSerial velocity control
+// 3: Fixed v/w control (no serial protocol)
+// 4: Full PacketSerial velocity control
 #ifndef TEST_STAGE
-#define TEST_STAGE 2
+#define TEST_STAGE 3
 #endif
 
 namespace {
@@ -73,6 +74,9 @@ constexpr int SEND_ENCODER_R_PTR = 4;
 
 constexpr float kDefaultMaxRpm = 600.0f;
 constexpr float kTwoPi = 6.28318530718f;
+constexpr float kTestTargetV = 0.0f;   // [m/s]
+constexpr float kTestTargetW = -0.05f;   // [rad/s]
+constexpr uint32_t kTestUpdateMs = 1000;
 
 PacketSerial packetSerial;
 MotorController motor_controllers[kMotorCount];
@@ -244,7 +248,7 @@ void send_encoder_feedback() {
 void onSerialPacketReceived(const uint8_t* buffer, size_t size) {
   uint8_t temp[size];
   memcpy(temp, buffer, size);
-#if TEST_STAGE >= 3
+#if TEST_STAGE >= 4
   set_motor_cmd_binary(temp, size);
   send_encoder_feedback();
 #endif
@@ -326,7 +330,7 @@ void job_10ms() {
 }
 
 void job_100ms() {
-#if TEST_STAGE >= 3
+#if TEST_STAGE >= 4
   com_fail_count++;
   if (com_fail_count > static_cast<int>(kFailSafeThreshold)) {
     if (!failsafe_active) {
@@ -350,7 +354,7 @@ void setup() {
   init_user_button();
   init_motor_controllers();
   init_encoder_estimates();
-#if TEST_STAGE >= 3
+#if TEST_STAGE >= 4
   packetSerial.begin(115200);
   packetSerial.setStream(&Serial);
   packetSerial.setPacketHandler(&onSerialPacketReceived);
@@ -376,7 +380,7 @@ void loop() {
     job_1000ms();
     prev_time_1000ms = current_time;
   }
-#if TEST_STAGE >= 3
+#if TEST_STAGE >= 4
   packetSerial.update();
   if (packetSerial.overflow()) {
     stop_motor_immediately();
@@ -425,6 +429,30 @@ void loop() {
     Serial.print(motor_rpm_to_linear_velocity(MOTOR_LEFT, rpm_l), 3);
     Serial.print(", v_r:");
     Serial.println(motor_rpm_to_linear_velocity(MOTOR_RIGHT, rpm_r), 3);
+  }
+#elif TEST_STAGE == 3
+  static unsigned long last_update = 0;
+  if (millis() - last_update > kTestUpdateMs) {
+    last_update = millis();
+    float target_v = motor_enabled ? kTestTargetV : 0.0f;
+    float target_w = motor_enabled ? kTestTargetW : 0.0f;
+    apply_velocity_targets(target_v, target_w, kDefaultMaxRpm);
+    float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, micros());
+    float rpm_r = update_motor_rpm_estimate(MOTOR_RIGHT, micros());
+    float vel_l = motor_rpm_to_linear_velocity(MOTOR_LEFT, rpm_l);
+    float vel_r = motor_rpm_to_linear_velocity(MOTOR_RIGHT, rpm_r);
+    Serial.print("[TEST_STAGE3] v:");
+    Serial.print(target_v, 3);
+    Serial.print(", w:");
+    Serial.print(target_w, 3);
+    Serial.print(", rpm_l:");
+    Serial.print(rpm_l, 1);
+    Serial.print(", rpm_r:");
+    Serial.print(rpm_r, 1);
+    Serial.print(", v_l:");
+    Serial.print(vel_l, 3);
+    Serial.print(", v_r:");
+    Serial.println(vel_r, 3);
   }
 #endif
 }
