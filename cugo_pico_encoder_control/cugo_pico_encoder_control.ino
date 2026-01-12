@@ -9,7 +9,7 @@
 // 3: Fixed v/w control (no serial protocol)
 // 4: Full PacketSerial velocity control
 #ifndef TEST_STAGE
-#define TEST_STAGE 3
+#define TEST_STAGE 4
 #endif
 
 namespace {
@@ -74,8 +74,8 @@ constexpr int SEND_ENCODER_R_PTR = 4;
 
 constexpr float kDefaultMaxRpm = 600.0f;
 constexpr float kTwoPi = 6.28318530718f;
-constexpr float kTestTargetV = 0.0f;   // [m/s]
-constexpr float kTestTargetW = -0.05f;   // [rad/s]
+constexpr float kTestTargetV = 0.01f;   // [m/s]
+constexpr float kTestTargetW = 0.0f;   // [rad/s]
 constexpr uint32_t kTestUpdateMs = 1000;
 
 PacketSerial packetSerial;
