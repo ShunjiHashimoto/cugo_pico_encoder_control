@@ -33,7 +33,7 @@ cugo_pico_encoder_control/
 3. 動作確認の段階に応じて `TEST_STAGE` マクロを設定できます。`TEST_STAGE=1` でエンコーダカウントのみシリアルへ出力、`TEST_STAGE=2` で一定RPMを指示して MotorController の挙動確認、`TEST_STAGE=3` でコード内指定の `v`/`w` による走行、`TEST_STAGE=4` で PacketSerial 入出力を使用します。
 4. Pico を USB 接続し、Arduino IDE の「マイコンボードに書き込む」でビルド・転送します（UF2 を手動でコピーする場合は BOOTSEL ボタンを押したまま接続してください）。CLI の場合は `arduino-cli compile --fqbn rp2040:rp2040:rpipico cugo_pico_encoder_control/cugo_pico_encoder_control` → `arduino-cli upload -p /dev/ttyACM0 --fqbn ...` で書き込めます。
 5. `TEST_STAGE=1/2/3` はシリアルモニタ (115200 bps) を使って挙動を確認してください。`TEST_STAGE=4` で Pico に書き込んだら、PC 側の ROS パッケージ (例: `cugo_ros2_control2`) を起動し、USB CDC ポートに PacketSerial フォーマットで `v`/`w` を送信します。Pico は受け取った `v`/`w` から左右目標 RPM を算出して制御し、エンコーダカウントを返信します。
-6. PC から手軽にテストする場合は `scripts/send_test_cmd_vel.py --port /dev/ttyACM0 --v 0.1 --w 0.0 --hz 10` のように実行すると、指定した `v`/`w` を一定周期で送出し、返信のエンコーダカウントを表示します（pyserial が必要）。
+6. PC から手軽にテストする場合は `scripts/send_test_cmd_vel.py --port /dev/ttyACM0 --v 0.1 --w 0.0 --hz 10` のように実行すると、指定した `v`/`w` を一定周期で送出し、返信のエンコーダカウントを表示します（`pyserial` と `cobs` が必要。例: `python3 -m pip install --user pyserial cobs`）。
 
 ## TEST_STAGE 3（コード内の v/w 指定）メモ
 `cugo_pico_encoder_control.ino` の `kTestTargetV` と `kTestTargetW` を書き換えることで、Pico 単体で走行テストできます。
