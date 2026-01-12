@@ -88,9 +88,16 @@ def main():
                 continue
             if len(resp) == PACKET_SIZE:
                 # Body 0-3: enc L, 4-7: enc R (int32 little-endian)
+                # Body 8-11: battery [V], 12-15: v [m/s], 16-19: w [rad/s]
                 enc_l = struct.unpack_from("<l", resp, HEADER_SIZE + 0)[0]
                 enc_r = struct.unpack_from("<l", resp, HEADER_SIZE + 4)[0]
-                print(f"resp enc_l={enc_l}, enc_r={enc_r}")
+                v_bat = struct.unpack_from("<f", resp, HEADER_SIZE + 8)[0]
+                v_meas = struct.unpack_from("<f", resp, HEADER_SIZE + 12)[0]
+                w_meas = struct.unpack_from("<f", resp, HEADER_SIZE + 16)[0]
+                print(
+                    f"resp enc_l={enc_l}, enc_r={enc_r}, vbat={v_bat:.2f} V, "
+                    f"v={v_meas:.3f} m/s, w={w_meas:.3f} rad/s"
+                )
             if interval > 0:
                 time.sleep(interval)
     except KeyboardInterrupt:

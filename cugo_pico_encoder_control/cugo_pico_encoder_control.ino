@@ -76,6 +76,8 @@ constexpr int TARGET_W_PTR = 4;
 constexpr int SEND_ENCODER_L_PTR = 0;
 constexpr int SEND_ENCODER_R_PTR = 4;
 constexpr int SEND_BATTERY_VOLT_PTR = 8;
+constexpr int SEND_V_PTR = 12;
+constexpr int SEND_W_PTR = 16;
 
 constexpr float kDefaultMaxRpm = 600.0f;
 constexpr float kTwoPi = 6.28318530718f;
@@ -253,6 +255,18 @@ void send_encoder_feedback() {
   write_int_to_buf(body, SEND_ENCODER_R_PTR, count_r);
   float v_bat = read_battery_voltage();
   write_float_to_buf(body, SEND_BATTERY_VOLT_PTR, v_bat);
+  unsigned long now_us = micros();
+  float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, now_us);
+  float rpm_r = update_motor_rpm_estimate(MOTOR_RIGHT, now_us);
+  float vel_l = motor_rpm_to_linear_velocity(MOTOR_LEFT, rpm_l);
+  float vel_r = motor_rpm_to_linear_velocity(MOTOR_RIGHT, rpm_r);
+  float v = 0.5f * (vel_l + vel_r);
+  float w = 0.0f;
+  if (kTread > 0.0f) {
+    w = (vel_r - vel_l) / kTread;
+  }
+  write_float_to_buf(body, SEND_V_PTR, v);
+  write_float_to_buf(body, SEND_W_PTR, w);
   uint16_t checksum = calculate_checksum(body, SERIAL_BIN_BUFF_SIZE);
   uint16_t header[4] = {kLocalPort, kLocalPort, static_cast<uint16_t>(SERIAL_HEADER_SIZE + SERIAL_BIN_BUFF_SIZE), checksum};
   uint8_t packet[SERIAL_HEADER_SIZE + SERIAL_BIN_BUFF_SIZE];
