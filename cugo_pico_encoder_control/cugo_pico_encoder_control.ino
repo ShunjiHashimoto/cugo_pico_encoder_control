@@ -47,6 +47,7 @@ constexpr uint8_t PIN_ENCODER_L_B = 3;  // left B -> GP3
 constexpr uint8_t PIN_ENCODER_R_A = 8;  // right A -> GP8
 constexpr uint8_t PIN_ENCODER_R_B = 9;  // right B -> GP9
 constexpr uint8_t PIN_USER_BUTTON = 15;  // SW5 active-low (connect to GND)
+constexpr uint8_t PIN_ADC_BAT = 26;  // GP26 (ADC0)
 #if defined(LED_BUILTIN)
 constexpr uint8_t PIN_STATUS_LED = LED_BUILTIN;
 #else
@@ -61,6 +62,9 @@ constexpr uint32_t kMicro1000ms = 1000000;
 constexpr size_t SERIAL_BIN_BUFF_SIZE = 64;
 constexpr size_t SERIAL_HEADER_SIZE = 8;
 constexpr uint16_t kLocalPort = 8888;  // dummy metadata for compatibility
+constexpr uint16_t kAdcMax = 4095;
+constexpr float kAdcVref = 3.3f;
+constexpr float kBatteryDividerRatio = 10.85f;  // Adjust to match the actual divider.
 
 // Header pointers
 constexpr int RECV_HEADER_PRODUCT_ID_PTR = 0;
@@ -71,6 +75,7 @@ constexpr int TARGET_V_PTR = 0;
 constexpr int TARGET_W_PTR = 4;
 constexpr int SEND_ENCODER_L_PTR = 0;
 constexpr int SEND_ENCODER_R_PTR = 4;
+constexpr int SEND_BATTERY_VOLT_PTR = 8;
 
 constexpr float kDefaultMaxRpm = 600.0f;
 constexpr float kTwoPi = 6.28318530718f;
@@ -135,12 +140,22 @@ void write_int_to_buf(uint8_t* buf, int offset, long val) {
   memcpy(buf + offset, &val, sizeof(long));
 }
 
+void write_float_to_buf(uint8_t* buf, int offset, float val) {
+  memcpy(buf + offset, &val, sizeof(float));
+}
+
 uint16_t read_uint16_from_header(const uint8_t* buf, int offset) {
   if (offset >= SERIAL_HEADER_SIZE - 1) {
     return 0;
   }
   uint16_t val = *reinterpret_cast<const uint16_t*>(buf + offset);
   return val;
+}
+
+float read_battery_voltage() {
+  int raw = analogRead(PIN_ADC_BAT);
+  float v_adc = (static_cast<float>(raw) / kAdcMax) * kAdcVref;
+  return v_adc * kBatteryDividerRatio;
 }
 
 float clamp_rpm(float rpm, float max_rpm) {
@@ -236,6 +251,8 @@ void send_encoder_feedback() {
   long count_r = motor_controllers[MOTOR_RIGHT].getCount();
   write_int_to_buf(body, SEND_ENCODER_L_PTR, count_l);
   write_int_to_buf(body, SEND_ENCODER_R_PTR, count_r);
+  float v_bat = read_battery_voltage();
+  write_float_to_buf(body, SEND_BATTERY_VOLT_PTR, v_bat);
   uint16_t checksum = calculate_checksum(body, SERIAL_BIN_BUFF_SIZE);
   uint16_t header[4] = {kLocalPort, kLocalPort, static_cast<uint16_t>(SERIAL_HEADER_SIZE + SERIAL_BIN_BUFF_SIZE), checksum};
   uint8_t packet[SERIAL_HEADER_SIZE + SERIAL_BIN_BUFF_SIZE];
@@ -350,6 +367,7 @@ void job_1000ms() {
 
 void setup() {
   Serial.begin(115200);
+  analogReadResolution(12);
   init_status_led();
   init_user_button();
   init_motor_controllers();
