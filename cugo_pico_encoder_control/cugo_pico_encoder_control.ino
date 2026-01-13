@@ -115,7 +115,7 @@ EncoderEstimate encoder_estimates[kMotorCount];
 void stop_motor_immediately();
 
 uint16_t calculate_checksum(const void* data, size_t size, size_t start = 0) {
-  uint16_t checksum = 0;
+  uint32_t checksum = 0;
   const uint8_t* bytes = static_cast<const uint8_t*>(data);
   for (size_t i = start; i < size; i += 2) {
     uint16_t word = bytes[i] << 8;
@@ -124,6 +124,7 @@ uint16_t calculate_checksum(const void* data, size_t size, size_t start = 0) {
     }
     checksum += word;
   }
+  checksum = (checksum & 0xFFFF) + (checksum >> 16);
   checksum = (checksum & 0xFFFF) + (checksum >> 16);
   return static_cast<uint16_t>(~checksum);
 }
