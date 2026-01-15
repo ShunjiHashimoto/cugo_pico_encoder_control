@@ -382,6 +382,7 @@ void job_1000ms() {
 
 void setup() {
   Serial.begin(115200);
+  analogWriteFreq(20000);
   analogReadResolution(12);
   init_status_led();
   init_user_button();
