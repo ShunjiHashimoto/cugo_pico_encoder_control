@@ -7,9 +7,9 @@
 
 // 0: DC motor driver (cugov3 style)
 // 1: BLDC driver HM-5100J (FWD/REV)
-// 2: BLDC driver HP-5097 (FWD-only direction select)
+// 2: BLDC driver HP-5097 (START/STOP + RUN/BRAKE)
 #ifndef DRIVER_TYPE
-#define DRIVER_TYPE 2
+#define DRIVER_TYPE 1
 #endif
 
 #define DRIVER_DC 0
@@ -24,10 +24,19 @@ constexpr uint8_t PIN_MOTOR_L_FWD = 2;
 constexpr uint8_t PIN_MOTOR_L_REV = 3;
 constexpr uint8_t PIN_MOTOR_R_FWD = 8;
 constexpr uint8_t PIN_MOTOR_R_REV = 9;
+constexpr uint8_t PIN_HP5097_START = 2;  // START/STOP input
+constexpr uint8_t PIN_HP5097_RUN = 3;    // RUN/BRAKE input
 constexpr uint8_t PIN_SW1 = 15;
+constexpr uint8_t PIN_LED1 = 21;
+constexpr uint8_t PIN_LED2 = 22;
+
+// Indicator LED turns on while this test is running.
+#ifndef INDICATOR_PIN
+#define INDICATOR_PIN PIN_LED1
+#endif
 
 // Duty ratio (0.0 to 1.0). Keep it low for testing (e.g., 0.1 or 0.2).
-constexpr float kDutyRatio = 0.1f;
+constexpr float kDutyRatio = 0.2f;
 constexpr bool kForward = false;
 constexpr uint32_t kDebounceMs = 20;
 
@@ -54,8 +63,10 @@ void setDirectionPins(bool forward) {
   digitalWrite(dir_fwd_pin, forward ? HIGH : LOW);
   digitalWrite(dir_rev_pin, forward ? LOW : HIGH);
 #elif DRIVER_TYPE == DRIVER_BLDC_HP5097
-  digitalWrite(dir_fwd_pin, forward ? HIGH : LOW);
-  digitalWrite(dir_rev_pin, LOW);
+  (void)forward;
+  // HP-5097: drive command requires START and RUN both ON.
+  digitalWrite(dir_fwd_pin, HIGH);  // START/STOP = ON
+  digitalWrite(dir_rev_pin, HIGH);  // RUN/BRAKE  = ON
 #else
 #error "Unsupported DRIVER_TYPE. Use 0, 1, or 2."
 #endif
@@ -77,6 +88,9 @@ void setup() {
   Serial.println("Motor: LEFT");
 #if DRIVER_TYPE == DRIVER_DC
   dir_fwd_pin = PIN_MOTOR_L_DIR_DC;
+#elif DRIVER_TYPE == DRIVER_BLDC_HP5097
+  dir_fwd_pin = PIN_HP5097_START;
+  dir_rev_pin = PIN_HP5097_RUN;
 #else
   dir_fwd_pin = PIN_MOTOR_L_FWD;
   dir_rev_pin = PIN_MOTOR_L_REV;
@@ -86,6 +100,9 @@ void setup() {
   Serial.println("Motor: RIGHT");
 #if DRIVER_TYPE == DRIVER_DC
   dir_fwd_pin = PIN_MOTOR_R_DIR_DC;
+#elif DRIVER_TYPE == DRIVER_BLDC_HP5097
+  dir_fwd_pin = PIN_HP5097_START;
+  dir_rev_pin = PIN_HP5097_RUN;
 #else
   dir_fwd_pin = PIN_MOTOR_R_FWD;
   dir_rev_pin = PIN_MOTOR_R_REV;
@@ -98,6 +115,7 @@ void setup() {
   Serial.println("Driver: BLDC HM-5100J");
 #elif DRIVER_TYPE == DRIVER_BLDC_HP5097
   Serial.println("Driver: BLDC HP-5097");
+  Serial.println("HP-5097 run condition: START=ON and RUN=ON");
 #endif
 
   pinMode(pwm_pin, OUTPUT);
@@ -105,6 +123,8 @@ void setup() {
   if (dir_rev_pin != 255) {
     pinMode(dir_rev_pin, OUTPUT);
   }
+  pinMode(INDICATOR_PIN, OUTPUT);
+  digitalWrite(INDICATOR_PIN, HIGH);
   pinMode(PIN_SW1, INPUT_PULLUP);
   analogWriteRange(kPwmRange);
   stopMotorOutput();
