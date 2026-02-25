@@ -28,7 +28,7 @@ MotorController::MotorController()
       reverse_motor_(false),
       stop_cnt_(0),
       initialized_(false),
-      last_cmd_forward_(true) {}
+      commanded_direction_(0) {}
 
 MotorController::MotorController(int enc_pin, int pwm_pin, int dir_pin_fwd, int pulse_per_round,
                                  int max_pwm, int control_hz, float lpf_rate, float kp,
@@ -66,7 +66,7 @@ MotorController::MotorController(int enc_pin, int pwm_pin, int dir_pin_fwd, int 
       reverse_motor_(reverse_motor),
       stop_cnt_(0),
       initialized_(false),
-      last_cmd_forward_(true) {
+      commanded_direction_(0) {
   pinMode(enc_pin_, INPUT_PULLUP);
   pinMode(pwm_pin_, OUTPUT);
   pinMode(dir_pin_fwd_, OUTPUT);
@@ -108,9 +108,12 @@ void MotorController::updateEnc() {
     return;
   }
 
-  int8_t delta = last_cmd_forward_ ? 1 : -1;
-  if (reverse_encoder_) {
-    delta = -delta;
+  int8_t delta = 1;
+  if (commanded_direction_ != 0) {
+    delta = commanded_direction_;
+    if (reverse_encoder_) {
+      delta = -delta;
+    }
   }
   enc_ += delta;
 }
@@ -248,11 +251,8 @@ void MotorController::applyPwmOutput() {
   }
 
   bool cmd_forward = (speed_ >= 0);
-  if (pwm_value > 0) {
-    last_cmd_forward_ = cmd_forward;
-  }
-
   if (pwm_value == 0) {
+    commanded_direction_ = 0;
     analogWrite(pwm_pin_, 0);
     digitalWrite(dir_pin_fwd_, LOW);
     if (dir_pin_rev_ >= 0) {
@@ -261,6 +261,7 @@ void MotorController::applyPwmOutput() {
     return;
   }
 
+  commanded_direction_ = cmd_forward ? 1 : -1;
   bool hw_forward = cmd_forward;
   if (reverse_motor_) {
     hw_forward = !hw_forward;
@@ -280,6 +281,7 @@ void MotorController::stopOutput() {
     return;
   }
 
+  commanded_direction_ = 0;
   analogWrite(pwm_pin_, 0);
   digitalWrite(dir_pin_fwd_, LOW);
   if (dir_pin_rev_ >= 0) {

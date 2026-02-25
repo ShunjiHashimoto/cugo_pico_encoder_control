@@ -8,7 +8,7 @@
 // 3: Fixed v/w control (no serial protocol)
 // 4: Full PacketSerial velocity control
 #ifndef TEST_STAGE
-#define TEST_STAGE 4
+#define TEST_STAGE 2
 #endif
 
 namespace {
@@ -27,7 +27,7 @@ constexpr float kRightKp = 1.5f;
 constexpr float kRightKi = 0.02f;
 constexpr float kRightKd = 0.1f;
 constexpr bool kLeftEncoderReverse = false;
-constexpr bool kRightEncoderReverse = true;
+constexpr bool kRightEncoderReverse = false;
 constexpr bool kLeftMotorReverse = true;
 constexpr bool kRightMotorReverse = true;
 
@@ -469,7 +469,7 @@ void loop() {
   static unsigned long last_update = 0;
   if (millis() - last_update > 1000) {
     last_update = millis();
-    float test_rpm = motor_enabled ? 20.0f : 0.0f;
+    float test_rpm = motor_enabled ? -100.0f : 0.0f;
     motor_controllers[MOTOR_LEFT].setTargetRpm(test_rpm);
     motor_controllers[MOTOR_RIGHT].setTargetRpm(test_rpm);
     float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, micros());

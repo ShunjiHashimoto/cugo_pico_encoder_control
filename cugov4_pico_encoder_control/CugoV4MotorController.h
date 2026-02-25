@@ -60,7 +60,7 @@ class MotorController {
 
   int stop_cnt_;
   bool initialized_;
-  bool last_cmd_forward_;
+  int8_t commanded_direction_;  // 1: forward, -1: reverse, 0: no direction command
 };
 
 #endif
