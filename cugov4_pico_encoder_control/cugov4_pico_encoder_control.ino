@@ -8,7 +8,7 @@
 // 3: Fixed v/w control (no serial protocol)
 // 4: Full PacketSerial velocity control
 #ifndef TEST_STAGE
-#define TEST_STAGE 2
+#define TEST_STAGE 3
 #endif
 
 namespace {
@@ -20,10 +20,10 @@ constexpr int kPulsePerRound = kSpeedOutPulsePerRev;
 constexpr int kMaxMotorPwm = 600;
 constexpr int kControlHz = 100;
 constexpr float kLpf = 0.95f;
-constexpr float kLeftKp = 1.5f;
+constexpr float kLeftKp = 1.0f;
 constexpr float kLeftKi = 0.02f;
 constexpr float kLeftKd = 0.1f;
-constexpr float kRightKp = 1.5f;
+constexpr float kRightKp = 1.0f;
 constexpr float kRightKi = 0.02f;
 constexpr float kRightKd = 0.1f;
 constexpr bool kLeftEncoderReverse = false;
@@ -94,7 +94,7 @@ constexpr int SEND_W_PTR = 16;
 constexpr float kDefaultMaxRpm = 600.0f;
 constexpr float kTwoPi = 6.28318530718f;
 constexpr float kStage2TestRpm = -100.0f;   // Keep low for initial bring-up safety.
-constexpr float kTestTargetV = 0.01f;   // [m/s]
+constexpr float kTestTargetV = 0.1f;   // [m/s]
 constexpr float kTestTargetW = 0.0f;   // [rad/s]
 constexpr uint32_t kTestUpdateMs = 1000;
 
