@@ -8,7 +8,7 @@
 // 3: Fixed v/w control (no serial protocol)
 // 4: Full PacketSerial velocity control
 #ifndef TEST_STAGE
-#define TEST_STAGE 3
+#define TEST_STAGE 4
 #endif
 
 namespace {
@@ -40,10 +40,10 @@ enum class MotorDriverDirectionMode : uint8_t {
 constexpr MotorDriverDirectionMode kMotorDriverDirectionMode = MotorDriverDirectionMode::kFwdRev;
 
 // Robot physical parameters
-constexpr float kWheelRadiusL = 0.0825f;   // [m]
-constexpr float kWheelRadiusR = 0.0825f;   // [m]
-constexpr float kTread = 0.394f;           // [m]
-constexpr float kReductionRatio = 30.0f;   // motor -> wheel gear ratio
+constexpr float kWheelRadiusL = 0.03858f;   // [m]
+constexpr float kWheelRadiusR = 0.03858f;   // [m]
+constexpr float kTread = 0.376f;           // [m]
+constexpr float kReductionRatio = 20.0f;   // motor -> wheel gear ratio
 
 // Pico pin assignment (GPIO numbers)
 constexpr uint8_t PIN_MOTOR_L_PWM = 17;      // PWM1_L -> GP17
@@ -94,8 +94,10 @@ constexpr int SEND_W_PTR = 16;
 constexpr float kDefaultMaxRpm = 600.0f;
 constexpr float kTwoPi = 6.28318530718f;
 constexpr float kStage2TestRpm = -100.0f;   // Keep low for initial bring-up safety.
-constexpr float kTestTargetV = 0.1f;   // [m/s]
-constexpr float kTestTargetW = 0.0f;   // [rad/s]
+constexpr float kTestTargetV = 0.0f;   // [m/s]
+constexpr float kTestTargetW = -0.2f;   // [rad/s]
+constexpr float kStage3LinearAccelLimit = 0.08f;  // [m/s^2]
+constexpr float kStage3AngularAccelLimit = 0.5f;  // [rad/s^2]
 constexpr uint32_t kTestUpdateMs = 1000;
 
 PacketSerial packetSerial;
@@ -113,6 +115,11 @@ long last_reported_count_r = 0;
 bool status_led_state = false;
 bool failsafe_active = false;
 bool motor_enabled = false;
+float target_v_cmd = 0.0f;
+float target_w_cmd = 0.0f;
+float target_v_applied = 0.0f;
+float target_w_applied = 0.0f;
+float target_max_rpm = kDefaultMaxRpm;
 
 struct EncoderEstimate {
   long last_count;
@@ -211,6 +218,16 @@ float linear_to_motor_rpm(float linear_velocity, float wheel_radius) {
   return motor_ang * 60.0f / kTwoPi;
 }
 
+float slew_towards(float current, float target, float max_step) {
+  if (target > current + max_step) {
+    return current + max_step;
+  }
+  if (target < current - max_step) {
+    return current - max_step;
+  }
+  return target;
+}
+
 void apply_velocity_targets(float v, float w, float max_rpm) {
   float v_l = v - (w * kTread * 0.5f);
   float v_r = v + (w * kTread * 0.5f);
@@ -266,7 +283,9 @@ void set_motor_cmd_binary(const uint8_t* packet, size_t size) {
 
   float target_v = read_float_from_buf(packet, TARGET_V_PTR);
   float target_w = read_float_from_buf(packet, TARGET_W_PTR);
-  apply_velocity_targets(target_v, target_w, max_rpm);
+  target_v_cmd = target_v;
+  target_w_cmd = target_w;
+  target_max_rpm = max_rpm;
   com_fail_count = 0;
   if (failsafe_active) {
     failsafe_active = false;
@@ -387,6 +406,11 @@ void init_motor_controllers() {
 void stop_motor_immediately() {
   motor_controllers[MOTOR_LEFT].setTargetRpm(0.0f);
   motor_controllers[MOTOR_RIGHT].setTargetRpm(0.0f);
+  target_v_cmd = 0.0f;
+  target_w_cmd = 0.0f;
+  target_v_applied = 0.0f;
+  target_w_applied = 0.0f;
+  target_max_rpm = kDefaultMaxRpm;
   motor_controllers[MOTOR_LEFT].reset_PID_param();
   motor_controllers[MOTOR_RIGHT].reset_PID_param();
   motor_controllers[MOTOR_LEFT].stopOutput();
@@ -396,6 +420,17 @@ void stop_motor_immediately() {
 void job_10ms() {
 #if TEST_STAGE >= 2
   if (motor_enabled) {
+#if TEST_STAGE == 3
+    target_v_cmd = kTestTargetV;
+    target_w_cmd = kTestTargetW;
+    target_max_rpm = kDefaultMaxRpm;
+#endif
+#if TEST_STAGE >= 3
+    float dt = 1.0f / static_cast<float>(kControlHz);
+    target_v_applied = slew_towards(target_v_applied, target_v_cmd, kStage3LinearAccelLimit * dt);
+    target_w_applied = slew_towards(target_w_applied, target_w_cmd, kStage3AngularAccelLimit * dt);
+    apply_velocity_targets(target_v_applied, target_w_applied, target_max_rpm);
+#endif
     for (int i = 0; i < kMotorCount; ++i) {
       motor_controllers[i].driveMotor();
     }
@@ -519,17 +554,14 @@ void loop() {
   static unsigned long last_update = 0;
   if (millis() - last_update > kTestUpdateMs) {
     last_update = millis();
-    float target_v = motor_enabled ? kTestTargetV : 0.0f;
-    float target_w = motor_enabled ? kTestTargetW : 0.0f;
-    apply_velocity_targets(target_v, target_w, kDefaultMaxRpm);
     float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, micros());
     float rpm_r = update_motor_rpm_estimate(MOTOR_RIGHT, micros());
     float vel_l = motor_rpm_to_linear_velocity(MOTOR_LEFT, rpm_l);
     float vel_r = motor_rpm_to_linear_velocity(MOTOR_RIGHT, rpm_r);
     Serial.print("[TEST_STAGE3] v:");
-    Serial.print(target_v, 3);
+    Serial.print(target_v_applied, 3);
     Serial.print(", w:");
-    Serial.print(target_w, 3);
+    Serial.print(target_w_applied, 3);
     Serial.print(", rpm_l:");
     Serial.print(rpm_l, 1);
     Serial.print(", rpm_r:");
