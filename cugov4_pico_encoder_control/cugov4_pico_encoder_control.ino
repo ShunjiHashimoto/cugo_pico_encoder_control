@@ -28,7 +28,7 @@ constexpr float kRightKi = 0.02f;
 constexpr float kRightKd = 0.1f;
 constexpr bool kLeftEncoderReverse = false;
 constexpr bool kRightEncoderReverse = false;
-constexpr bool kLeftMotorReverse = true;
+constexpr bool kLeftMotorReverse = false;
 constexpr bool kRightMotorReverse = true;
 
 enum class MotorDriverDirectionMode : uint8_t {
@@ -54,6 +54,10 @@ constexpr uint8_t PIN_MOTOR_R_DIR_FWD = 8;   // DIR2_R_FWD -> GP8
 constexpr uint8_t PIN_MOTOR_R_DIR_REV = 9;   // DIR2_R_REV -> GP9
 constexpr uint8_t PIN_ENCODER_L_A = 5;       // SPEED-OUT_L -> GP5 (single-channel pulse)
 constexpr uint8_t PIN_ENCODER_R_A = 7;       // SPEED-OUT_R -> GP7 (single-channel pulse)
+constexpr uint8_t PIN_ENCODER_L_DIR = 12;    // Encoder direction signal (left)
+constexpr uint8_t PIN_ENCODER_R_DIR = 13;    // Encoder direction signal (right)
+constexpr bool kDirectionHighIsForwardLeft = false;
+constexpr bool kDirectionHighIsForwardRight = true;
 constexpr uint8_t PIN_USER_BUTTON = 15;  // SW5 active-low (connect to GND)
 constexpr uint8_t PIN_ADC_BAT = 26;  // GP26 (ADC0)
 #if defined(LED_BUILTIN)
@@ -89,6 +93,7 @@ constexpr int SEND_W_PTR = 16;
 
 constexpr float kDefaultMaxRpm = 600.0f;
 constexpr float kTwoPi = 6.28318530718f;
+constexpr float kStage2TestRpm = -100.0f;   // Keep low for initial bring-up safety.
 constexpr float kTestTargetV = 0.01f;   // [m/s]
 constexpr float kTestTargetW = 0.0f;   // [rad/s]
 constexpr uint32_t kTestUpdateMs = 1000;
@@ -121,6 +126,20 @@ EncoderEstimate encoder_estimates[kMotorCount];
 
 // Forward declarations for helpers used before definition
 void stop_motor_immediately();
+
+int8_t read_direction_sign(uint8_t pin_direction, bool high_is_forward) {
+  bool high = (digitalRead(pin_direction) == HIGH);
+  bool forward = high_is_forward ? high : !high;
+  return forward ? 1 : -1;
+}
+
+int8_t read_left_rotation_direction_sign_from_dir() {
+  return read_direction_sign(PIN_ENCODER_L_DIR, kDirectionHighIsForwardLeft);
+}
+
+int8_t read_right_rotation_direction_sign_from_dir() {
+  return read_direction_sign(PIN_ENCODER_R_DIR, kDirectionHighIsForwardRight);
+}
 
 uint16_t calculate_checksum(const void* data, size_t size, size_t start = 0) {
   uint32_t checksum = 0;
@@ -295,11 +314,11 @@ void onSerialPacketReceived(const uint8_t* buffer, size_t size) {
 }
 
 void leftEncHandler() {
-  motor_controllers[MOTOR_LEFT].updateEnc();
+  motor_controllers[MOTOR_LEFT].updateEnc(read_left_rotation_direction_sign_from_dir());
 }
 
 void rightEncHandler() {
-  motor_controllers[MOTOR_RIGHT].updateEnc();
+  motor_controllers[MOTOR_RIGHT].updateEnc(read_right_rotation_direction_sign_from_dir());
 }
 
 void set_status_led(bool on) {
@@ -334,6 +353,8 @@ void update_motor_enable_from_button() {
 void init_motor_controllers() {
   pinMode(PIN_ENCODER_L_A, INPUT_PULLUP);
   pinMode(PIN_ENCODER_R_A, INPUT_PULLUP);
+  pinMode(PIN_ENCODER_L_DIR, INPUT_PULLUP);
+  pinMode(PIN_ENCODER_R_DIR, INPUT_PULLUP);
   if (kMotorDriverDirectionMode == MotorDriverDirectionMode::kFwdRev) {
     motor_controllers[MOTOR_LEFT] = MotorController(PIN_ENCODER_L_A, PIN_MOTOR_L_PWM,
                                                    PIN_MOTOR_L_DIR_FWD, PIN_MOTOR_L_DIR_REV,
@@ -366,6 +387,8 @@ void init_motor_controllers() {
 void stop_motor_immediately() {
   motor_controllers[MOTOR_LEFT].setTargetRpm(0.0f);
   motor_controllers[MOTOR_RIGHT].setTargetRpm(0.0f);
+  motor_controllers[MOTOR_LEFT].reset_PID_param();
+  motor_controllers[MOTOR_RIGHT].reset_PID_param();
   motor_controllers[MOTOR_LEFT].stopOutput();
   motor_controllers[MOTOR_RIGHT].stopOutput();
 }
@@ -403,6 +426,7 @@ void job_1000ms() {
 
 void setup() {
   Serial.begin(115200);
+  analogWriteRange(kMaxMotorPwm);
   analogWriteFreq(20000);
   analogReadResolution(12);
   init_status_led();
@@ -469,17 +493,23 @@ void loop() {
   static unsigned long last_update = 0;
   if (millis() - last_update > 1000) {
     last_update = millis();
-    float test_rpm = motor_enabled ? -100.0f : 0.0f;
+    float test_rpm = motor_enabled ? kStage2TestRpm : 0.0f;
     motor_controllers[MOTOR_LEFT].setTargetRpm(test_rpm);
     motor_controllers[MOTOR_RIGHT].setTargetRpm(test_rpm);
     float rpm_l = update_motor_rpm_estimate(MOTOR_LEFT, micros());
     float rpm_r = update_motor_rpm_estimate(MOTOR_RIGHT, micros());
+    int8_t dir_l = read_left_rotation_direction_sign_from_dir();
+    int8_t dir_r = read_right_rotation_direction_sign_from_dir();
     Serial.print("[TEST_STAGE2] Cmd RPM:");
     Serial.print(test_rpm, 1);
     Serial.print(", meas_l:");
     Serial.print(rpm_l, 1);
     Serial.print(", meas_r:");
     Serial.print(rpm_r, 1);
+    Serial.print(", dir_l:");
+    Serial.print((dir_l > 0) ? "FWD" : "REV");
+    Serial.print(", dir_r:");
+    Serial.print((dir_r > 0) ? "FWD" : "REV");
     Serial.print(", v_l:");
     Serial.print(motor_rpm_to_linear_velocity(MOTOR_LEFT, rpm_l), 3);
     Serial.print(", v_r:");

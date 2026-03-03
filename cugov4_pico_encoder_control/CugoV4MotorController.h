@@ -14,7 +14,7 @@ class MotorController {
                   float kp, float ki, float kd, bool reverse_encoder, bool reverse_motor);
 
   void driveMotor();
-  void updateEnc();
+  void updateEnc(int8_t direction_sign);
   void setTargetRpm(float target_rpm);
   float getRpm();
   float getSpeed();
@@ -60,7 +60,6 @@ class MotorController {
 
   int stop_cnt_;
   bool initialized_;
-  int8_t commanded_direction_;  // 1: forward, -1: reverse, 0: no direction command
 };
 
 #endif
