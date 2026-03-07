@@ -123,6 +123,11 @@ float target_v_applied = 0.0f;
 float target_w_applied = 0.0f;
 float target_max_rpm = kDefaultMaxRpm;
 
+struct VelocityCommand {
+  float v;
+  float w;
+};
+
 struct EncoderEstimate {
   long last_count;
   unsigned long last_time_us;
@@ -224,6 +229,11 @@ float linear_to_motor_rpm(float linear_velocity, float wheel_radius) {
   return motor_ang * 60.0f / kTwoPi;
 }
 
+float motor_rpm_to_linear_velocity_with_radius(float motor_rpm, float wheel_radius) {
+  float wheel_rps = (motor_rpm / 60.0f) / kReductionRatio;
+  return wheel_rps * kTwoPi * wheel_radius;
+}
+
 float slew_towards(float current, float target, float max_step) {
   if (target > current + max_step) {
     return current + max_step;
@@ -232,6 +242,30 @@ float slew_towards(float current, float target, float max_step) {
     return current - max_step;
   }
   return target;
+}
+
+VelocityCommand clamp_velocity_command_to_max_rpm(float v, float w, float max_rpm) {
+  float v_l = v - (w * kTread * 0.5f);
+  float v_r = v + (w * kTread * 0.5f);
+  float rpm_l = linear_to_motor_rpm(v_l, kWheelRadiusL);
+  float rpm_r = linear_to_motor_rpm(v_r, kWheelRadiusR);
+  float max_abs_rpm = abs(rpm_l);
+  if (abs(rpm_r) > max_abs_rpm) {
+    max_abs_rpm = abs(rpm_r);
+  }
+  if (max_abs_rpm <= max_rpm || max_abs_rpm == 0.0f) {
+    return {v, w};
+  }
+  float scale = max_rpm / max_abs_rpm;
+  float v_l_scaled = motor_rpm_to_linear_velocity_with_radius(rpm_l * scale, kWheelRadiusL);
+  float v_r_scaled = motor_rpm_to_linear_velocity_with_radius(rpm_r * scale, kWheelRadiusR);
+  VelocityCommand cmd;
+  cmd.v = 0.5f * (v_l_scaled + v_r_scaled);
+  cmd.w = 0.0f;
+  if (kTread > 0.0f) {
+    cmd.w = (v_r_scaled - v_l_scaled) / kTread;
+  }
+  return cmd;
 }
 
 void apply_velocity_targets(float v, float w, float max_rpm) {
@@ -247,8 +281,7 @@ void apply_velocity_targets(float v, float w, float max_rpm) {
 
 float motor_rpm_to_linear_velocity(int motor_index, float motor_rpm) {
   float wheel_radius = (motor_index == MOTOR_LEFT) ? kWheelRadiusL : kWheelRadiusR;
-  float wheel_rps = (motor_rpm / 60.0f) / kReductionRatio;
-  return wheel_rps * kTwoPi * wheel_radius;
+  return motor_rpm_to_linear_velocity_with_radius(motor_rpm, wheel_radius);
 }
 
 float update_motor_rpm_estimate(int motor_index, unsigned long now_us) {
@@ -437,8 +470,9 @@ void job_10ms() {
 #endif
 #if TEST_STAGE >= 3
     float dt = 1.0f / static_cast<float>(kControlHz);
-    target_v_applied = slew_towards(target_v_applied, target_v_cmd, kStage3LinearAccelLimit * dt);
-    target_w_applied = slew_towards(target_w_applied, target_w_cmd, kStage3AngularAccelLimit * dt);
+    VelocityCommand limited_cmd = clamp_velocity_command_to_max_rpm(target_v_cmd, target_w_cmd, target_max_rpm);
+    target_v_applied = slew_towards(target_v_applied, limited_cmd.v, kStage3LinearAccelLimit * dt);
+    target_w_applied = slew_towards(target_w_applied, limited_cmd.w, kStage3AngularAccelLimit * dt);
     apply_velocity_targets(target_v_applied, target_w_applied, target_max_rpm);
 #endif
     for (int i = 0; i < kMotorCount; ++i) {
