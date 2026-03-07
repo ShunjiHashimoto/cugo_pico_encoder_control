@@ -16,7 +16,6 @@ constexpr int kMotorCount = 2;
 constexpr int MOTOR_LEFT = 0;
 constexpr int MOTOR_RIGHT = 1;
 constexpr int kSpeedOutPulsePerRev = 30;  // HP-5097J/HM-5100J manual value
-constexpr int kPulsePerRound = kSpeedOutPulsePerRev;
 constexpr int kMaxMotorPwm = 600;
 constexpr int kControlHz = 100;
 constexpr float kLpf = 0.95f;
@@ -26,10 +25,15 @@ constexpr float kLeftKd = 0.1f;
 constexpr float kRightKp = 1.0f;
 constexpr float kRightKi = 0.02f;
 constexpr float kRightKd = 0.1f;
-constexpr bool kLeftEncoderReverse = false;
-constexpr bool kRightEncoderReverse = false;
-constexpr bool kLeftMotorReverse = false;
-constexpr bool kRightMotorReverse = true;
+
+struct WheelPolarityConfig {
+  int8_t encoder_dir_high_sign;  // +1: DIR=HIGH means forward, -1: DIR=HIGH means reverse
+  int8_t motor_command_sign;     // +1: positive command is HW forward, -1: inverted
+};
+
+// Consolidated polarity settings per side (same behavior as previous 6 flags).
+constexpr WheelPolarityConfig kLeftPolarity = {+1, -1};
+constexpr WheelPolarityConfig kRightPolarity = {-1, +1};
 
 enum class MotorDriverDirectionMode : uint8_t {
   kFwdOnly = 0,  // HP-5097J style (single direction pin)
@@ -56,8 +60,6 @@ constexpr uint8_t PIN_ENCODER_L_A = 5;       // SPEED-OUT_L -> GP5 (single-chann
 constexpr uint8_t PIN_ENCODER_R_A = 7;       // SPEED-OUT_R -> GP7 (single-channel pulse)
 constexpr uint8_t PIN_ENCODER_L_DIR = 12;    // Encoder direction signal (left)
 constexpr uint8_t PIN_ENCODER_R_DIR = 13;    // Encoder direction signal (right)
-constexpr bool kDirectionHighIsForwardLeft = false;
-constexpr bool kDirectionHighIsForwardRight = true;
 constexpr uint8_t PIN_USER_BUTTON = 15;  // SW5 active-low (connect to GND)
 constexpr uint8_t PIN_ADC_BAT = 26;  // GP26 (ADC0)
 #if defined(LED_BUILTIN)
@@ -134,18 +136,22 @@ EncoderEstimate encoder_estimates[kMotorCount];
 // Forward declarations for helpers used before definition
 void stop_motor_immediately();
 
-int8_t read_direction_sign(uint8_t pin_direction, bool high_is_forward) {
+constexpr bool is_inverted_sign(int8_t sign) {
+  return sign < 0;
+}
+
+int8_t read_direction_sign(uint8_t pin_direction, int8_t high_sign) {
   bool high = (digitalRead(pin_direction) == HIGH);
-  bool forward = high_is_forward ? high : !high;
-  return forward ? 1 : -1;
+  int8_t normalized_high_sign = is_inverted_sign(high_sign) ? -1 : 1;
+  return high ? normalized_high_sign : -normalized_high_sign;
 }
 
 int8_t read_left_rotation_direction_sign_from_dir() {
-  return read_direction_sign(PIN_ENCODER_L_DIR, kDirectionHighIsForwardLeft);
+  return read_direction_sign(PIN_ENCODER_L_DIR, kLeftPolarity.encoder_dir_high_sign);
 }
 
 int8_t read_right_rotation_direction_sign_from_dir() {
-  return read_direction_sign(PIN_ENCODER_R_DIR, kDirectionHighIsForwardRight);
+  return read_direction_sign(PIN_ENCODER_R_DIR, kRightPolarity.encoder_dir_high_sign);
 }
 
 uint16_t calculate_checksum(const void* data, size_t size, size_t start = 0) {
@@ -256,7 +262,7 @@ float update_motor_rpm_estimate(int motor_index, unsigned long now_us) {
     return estimate.last_motor_rpm;
   }
   float dt = static_cast<float>(elapsed) * 1e-6f;
-  float motor_rev = static_cast<float>(diff) / static_cast<float>(kPulsePerRound);
+  float motor_rev = static_cast<float>(diff) / static_cast<float>(kSpeedOutPulsePerRev);
   float motor_rps = motor_rev / dt;
   estimate.last_motor_rpm = motor_rps * 60.0f;
   return estimate.last_motor_rpm;
@@ -377,12 +383,14 @@ void init_motor_controllers() {
   if (kMotorDriverDirectionMode == MotorDriverDirectionMode::kFwdRev) {
     motor_controllers[MOTOR_LEFT] = MotorController(PIN_ENCODER_L_A, PIN_MOTOR_L_PWM,
                                                    PIN_MOTOR_L_DIR_FWD, PIN_MOTOR_L_DIR_REV,
-                                                   kPulsePerRound, kMaxMotorPwm, kControlHz,
-                                                   kLpf, kLeftKp, kLeftKi, kLeftKd, kLeftEncoderReverse, kLeftMotorReverse);
+                                                   kSpeedOutPulsePerRev, kMaxMotorPwm, kControlHz,
+                                                   kLpf, kLeftKp, kLeftKi, kLeftKd, false,
+                                                   is_inverted_sign(kLeftPolarity.motor_command_sign));
     motor_controllers[MOTOR_RIGHT] = MotorController(PIN_ENCODER_R_A, PIN_MOTOR_R_PWM,
                                                     PIN_MOTOR_R_DIR_FWD, PIN_MOTOR_R_DIR_REV,
-                                                    kPulsePerRound, kMaxMotorPwm, kControlHz,
-                                                    kLpf, kRightKp, kRightKi, kRightKd, kRightEncoderReverse, kRightMotorReverse);
+                                                    kSpeedOutPulsePerRev, kMaxMotorPwm, kControlHz,
+                                                    kLpf, kRightKp, kRightKi, kRightKd, false,
+                                                    is_inverted_sign(kRightPolarity.motor_command_sign));
   } else {
     // HP-5097J mode: use FWD pin as single direction input and keep REV pins inactive.
     pinMode(PIN_MOTOR_L_DIR_REV, OUTPUT);
@@ -391,12 +399,14 @@ void init_motor_controllers() {
     digitalWrite(PIN_MOTOR_R_DIR_REV, LOW);
     motor_controllers[MOTOR_LEFT] = MotorController(PIN_ENCODER_L_A, PIN_MOTOR_L_PWM,
                                                    PIN_MOTOR_L_DIR_FWD,
-                                                   kPulsePerRound, kMaxMotorPwm, kControlHz,
-                                                   kLpf, kLeftKp, kLeftKi, kLeftKd, kLeftEncoderReverse, kLeftMotorReverse);
+                                                   kSpeedOutPulsePerRev, kMaxMotorPwm, kControlHz,
+                                                   kLpf, kLeftKp, kLeftKi, kLeftKd, false,
+                                                   is_inverted_sign(kLeftPolarity.motor_command_sign));
     motor_controllers[MOTOR_RIGHT] = MotorController(PIN_ENCODER_R_A, PIN_MOTOR_R_PWM,
                                                     PIN_MOTOR_R_DIR_FWD,
-                                                    kPulsePerRound, kMaxMotorPwm, kControlHz,
-                                                    kLpf, kRightKp, kRightKi, kRightKd, kRightEncoderReverse, kRightMotorReverse);
+                                                    kSpeedOutPulsePerRev, kMaxMotorPwm, kControlHz,
+                                                    kLpf, kRightKp, kRightKi, kRightKd, false,
+                                                    is_inverted_sign(kRightPolarity.motor_command_sign));
   }
 
   attachInterrupt(digitalPinToInterrupt(PIN_ENCODER_L_A), leftEncHandler, RISING);
