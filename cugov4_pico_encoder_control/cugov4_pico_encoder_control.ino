@@ -84,9 +84,13 @@ constexpr float kBatteryDividerRatio = 10.85f;  // Adjust to match the actual di
 constexpr int RECV_HEADER_PRODUCT_ID_PTR = 0;
 constexpr int RECV_HEADER_CHECKSUM_PTR = 6;
 
-// Body pointers (incoming: v [m/s], w [rad/s])
+// Body pointers (incoming: v [m/s], w [rad/s], accel/decel limits)
 constexpr int TARGET_V_PTR = 0;
 constexpr int TARGET_W_PTR = 4;
+constexpr int TARGET_V_ACCEL_PTR = 8;   // [m/s^2]
+constexpr int TARGET_W_ACCEL_PTR = 12;  // [rad/s^2]
+constexpr int TARGET_V_DECEL_PTR = 16;  // [m/s^2]
+constexpr int TARGET_W_DECEL_PTR = 20;  // [rad/s^2]
 constexpr int SEND_ENCODER_L_PTR = 0;
 constexpr int SEND_ENCODER_R_PTR = 4;
 constexpr int SEND_BATTERY_VOLT_PTR = 8;
@@ -122,6 +126,10 @@ float target_w_cmd = 0.0f;
 float target_v_applied = 0.0f;
 float target_w_applied = 0.0f;
 float target_max_rpm = kDefaultMaxRpm;
+float target_v_accel_limit = kStage3LinearAccelLimit;
+float target_w_accel_limit = kStage3AngularAccelLimit;
+float target_v_decel_limit = kStage3LinearAccelLimit;
+float target_w_decel_limit = kStage3AngularAccelLimit;
 
 struct VelocityCommand {
   float v;
@@ -244,6 +252,13 @@ float slew_towards(float current, float target, float max_step) {
   return target;
 }
 
+float positive_or_default(float value, float fallback) {
+  if (value > 0.0f) {
+    return value;
+  }
+  return fallback;
+}
+
 VelocityCommand clamp_velocity_command_to_max_rpm(float v, float w, float max_rpm) {
   float v_l = v - (w * kTread * 0.5f);
   float v_r = v + (w * kTread * 0.5f);
@@ -322,8 +337,16 @@ void set_motor_cmd_binary(const uint8_t* packet, size_t size) {
 
   float target_v = read_float_from_buf(packet, TARGET_V_PTR);
   float target_w = read_float_from_buf(packet, TARGET_W_PTR);
+  float target_v_acc = read_float_from_buf(packet, TARGET_V_ACCEL_PTR);
+  float target_w_acc = read_float_from_buf(packet, TARGET_W_ACCEL_PTR);
+  float target_v_dec = read_float_from_buf(packet, TARGET_V_DECEL_PTR);
+  float target_w_dec = read_float_from_buf(packet, TARGET_W_DECEL_PTR);
   target_v_cmd = target_v;
   target_w_cmd = target_w;
+  target_v_accel_limit = positive_or_default(target_v_acc, kStage3LinearAccelLimit);
+  target_w_accel_limit = positive_or_default(target_w_acc, kStage3AngularAccelLimit);
+  target_v_decel_limit = positive_or_default(target_v_dec, kStage3LinearAccelLimit);
+  target_w_decel_limit = positive_or_default(target_w_dec, kStage3AngularAccelLimit);
   target_max_rpm = max_rpm;
   com_fail_count = 0;
   if (failsafe_active) {
@@ -453,6 +476,10 @@ void stop_motor_immediately() {
   target_w_cmd = 0.0f;
   target_v_applied = 0.0f;
   target_w_applied = 0.0f;
+  target_v_accel_limit = kStage3LinearAccelLimit;
+  target_w_accel_limit = kStage3AngularAccelLimit;
+  target_v_decel_limit = kStage3LinearAccelLimit;
+  target_w_decel_limit = kStage3AngularAccelLimit;
   target_max_rpm = kDefaultMaxRpm;
   motor_controllers[MOTOR_LEFT].reset_PID_param();
   motor_controllers[MOTOR_RIGHT].reset_PID_param();
@@ -466,12 +493,19 @@ void job_10ms() {
 #if TEST_STAGE == 3
     target_v_cmd = kTestTargetV;
     target_w_cmd = kTestTargetW;
+    target_v_accel_limit = kStage3LinearAccelLimit;
+    target_w_accel_limit = kStage3AngularAccelLimit;
+    target_v_decel_limit = kStage3LinearAccelLimit;
+    target_w_decel_limit = kStage3AngularAccelLimit;
     target_max_rpm = kDefaultMaxRpm;
 #endif
 #if TEST_STAGE >= 3
+    float dt = 1.0f / static_cast<float>(kControlHz);
     VelocityCommand limited_cmd = clamp_velocity_command_to_max_rpm(target_v_cmd, target_w_cmd, target_max_rpm);
-    target_v_applied = limited_cmd.v;
-    target_w_applied = limited_cmd.w;
+    float v_limit = (limited_cmd.v >= target_v_applied) ? target_v_accel_limit : target_v_decel_limit;
+    float w_limit = (limited_cmd.w >= target_w_applied) ? target_w_accel_limit : target_w_decel_limit;
+    target_v_applied = slew_towards(target_v_applied, limited_cmd.v, v_limit * dt);
+    target_w_applied = slew_towards(target_w_applied, limited_cmd.w, w_limit * dt);
     apply_velocity_targets(target_v_applied, target_w_applied, target_max_rpm);
 #endif
     for (int i = 0; i < kMotorCount; ++i) {

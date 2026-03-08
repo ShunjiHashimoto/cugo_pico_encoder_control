@@ -34,10 +34,14 @@ def checksum(data: bytes) -> int:
     return (~s) & 0xFFFF
 
 
-def build_packet(v: float, w: float) -> bytes:
+def build_packet(v: float, w: float, v_acc: float, w_acc: float, v_dec: float, w_dec: float) -> bytes:
     body = bytearray(BODY_SIZE)
     struct.pack_into("<f", body, 0, v)
     struct.pack_into("<f", body, 4, w)
+    struct.pack_into("<f", body, 8, v_acc)
+    struct.pack_into("<f", body, 12, w_acc)
+    struct.pack_into("<f", body, 16, v_dec)
+    struct.pack_into("<f", body, 20, w_dec)
     csum = checksum(body)
     header = struct.pack("<HHHH", LOCAL_PORT, LOCAL_PORT, PACKET_SIZE, csum)
     return header + body
@@ -52,6 +56,10 @@ def parse_args():
     parser.add_argument("--port", required=True, help="Serial port, e.g., /dev/ttyACM0")
     parser.add_argument("--v", type=float, default=0.0, help="Linear velocity [m/s]")
     parser.add_argument("--w", type=float, default=0.0, help="Angular velocity [rad/s]")
+    parser.add_argument("--v-acc", type=float, default=0.5, help="Linear acceleration limit [m/s^2]")
+    parser.add_argument("--w-acc", type=float, default=1.0, help="Angular acceleration limit [rad/s^2]")
+    parser.add_argument("--v-dec", type=float, default=0.5, help="Linear deceleration limit [m/s^2]")
+    parser.add_argument("--w-dec", type=float, default=1.0, help="Angular deceleration limit [rad/s^2]")
     parser.add_argument("--hz", type=float, default=10.0, help="Send frequency [Hz]")
     parser.add_argument("--count", type=int, default=0, help="Number of packets to send (0=unlimited)")
     return parser.parse_args()
@@ -60,7 +68,7 @@ def parse_args():
 def main():
     args = parse_args()
     interval = 1.0 / args.hz if args.hz > 0 else 0.1
-    pkt = encode_packet(build_packet(args.v, args.w))
+    pkt = encode_packet(build_packet(args.v, args.w, args.v_acc, args.w_acc, args.v_dec, args.w_dec))
 
     try:
         ser = serial.Serial(args.port, 115200, timeout=0.05)
@@ -68,7 +76,11 @@ def main():
         sys.stderr.write(f"Failed to open port {args.port}: {e}\n")
         sys.exit(1)
 
-    print(f"Sending v={args.v:.3f} [m/s], w={args.w:.3f} [rad/s] to {args.port} at {args.hz} Hz")
+    print(
+        f"Sending v={args.v:.3f} [m/s], w={args.w:.3f} [rad/s], "
+        f"v_acc={args.v_acc:.3f}, w_acc={args.w_acc:.3f}, "
+        f"v_dec={args.v_dec:.3f}, w_dec={args.w_dec:.3f} to {args.port} at {args.hz} Hz"
+    )
     sent = 0
     try:
         while args.count == 0 or sent < args.count:
