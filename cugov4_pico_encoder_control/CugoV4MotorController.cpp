@@ -1,6 +1,15 @@
 #include "Arduino.h"
 #include "CugoV4MotorController.h"
 
+namespace {
+// Open-loop baseline mode: map target RPM directly to PWM duty.
+constexpr bool kUseOpenLoopDutyControl = true;
+// Representative no-load motor speed at 5V from datasheet graph.
+constexpr float kOpenLoopRpmAtFullPwm = 4000.0f;
+// Set >0 when needed to overcome deadzone around zero.
+constexpr int kOpenLoopMinPwm = 0;
+}  // namespace
+
 MotorController::MotorController()
     : enc_pin_(-1),
       pwm_pin_(-1),
@@ -197,6 +206,31 @@ void MotorController::calcRpm() {
 
 void MotorController::pidControl() {
   if (!initialized_) {
+    return;
+  }
+
+  if (kUseOpenLoopDutyControl) {
+    float target_abs = (target_rpm_ >= 0.0f) ? target_rpm_ : -target_rpm_;
+    float pwm_f = 0.0f;
+    if (kOpenLoopRpmAtFullPwm > 0.0f) {
+      pwm_f = (target_abs / kOpenLoopRpmAtFullPwm) * static_cast<float>(max_pwm_);
+    }
+    if (target_abs > 0.0f && pwm_f < static_cast<float>(kOpenLoopMinPwm)) {
+      pwm_f = static_cast<float>(kOpenLoopMinPwm);
+    }
+    if (pwm_f > static_cast<float>(max_pwm_)) {
+      pwm_f = static_cast<float>(max_pwm_);
+    }
+
+    int pwm_cmd = static_cast<int>(pwm_f);
+    speed_ = (target_rpm_ >= 0.0f) ? pwm_cmd : -pwm_cmd;
+
+    disp_p_ = target_rpm_;
+    disp_i_ = 0.0f;
+    disp_d_ = 0.0f;
+    prev_p_ = 0.0f;
+    prev_i_ = 0.0f;
+    stop_cnt_ = 0;
     return;
   }
 

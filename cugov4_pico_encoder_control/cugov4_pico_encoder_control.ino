@@ -19,12 +19,12 @@ constexpr int kSpeedOutPulsePerRev = 30;  // HP-5097J/HM-5100J manual value
 constexpr int kMaxMotorPwm = 600;
 constexpr int kControlHz = 100;
 constexpr float kLpf = 0.95f;
-constexpr float kLeftKp = 1.0f;
-constexpr float kLeftKi = 0.02f;
-constexpr float kLeftKd = 0.1f;
-constexpr float kRightKp = 1.0f;
-constexpr float kRightKi = 0.02f;
-constexpr float kRightKd = 0.1f;
+constexpr float kLeftKp = 0.5f;
+constexpr float kLeftKi = 0.01f;
+constexpr float kLeftKd = 0.0f;
+constexpr float kRightKp = 0.5f;
+constexpr float kRightKi = 0.01f;
+constexpr float kRightKd = 0.0f;
 
 struct WheelPolarityConfig {
   int8_t encoder_dir_high_sign;  // +1: DIR=HIGH means forward, -1: DIR=HIGH means reverse
@@ -93,7 +93,7 @@ constexpr int SEND_BATTERY_VOLT_PTR = 8;
 constexpr int SEND_V_PTR = 12;
 constexpr int SEND_W_PTR = 16;
 
-constexpr float kDefaultMaxRpm = 600.0f;
+constexpr float kDefaultMaxRpm = 3000.0f;
 constexpr float kTwoPi = 6.28318530718f;
 constexpr float kStage2TestRpm = -100.0f;   // Keep low for initial bring-up safety.
 constexpr float kTestTargetV = 0.0f;   // [m/s]
@@ -215,7 +215,7 @@ float clamp_rpm(float rpm, float max_rpm) {
 float resolve_max_rpm(uint16_t product_id) {
   switch (product_id) {
     case 0x0002:
-      return 400.0f;  // example for CuGo V4
+      return 3000.0f;  // example for CuGo V4
     case 0x0003:
       return 300.0f;  // example for CuGo V3i
     default:
@@ -469,10 +469,9 @@ void job_10ms() {
     target_max_rpm = kDefaultMaxRpm;
 #endif
 #if TEST_STAGE >= 3
-    float dt = 1.0f / static_cast<float>(kControlHz);
     VelocityCommand limited_cmd = clamp_velocity_command_to_max_rpm(target_v_cmd, target_w_cmd, target_max_rpm);
-    target_v_applied = slew_towards(target_v_applied, limited_cmd.v, kStage3LinearAccelLimit * dt);
-    target_w_applied = slew_towards(target_w_applied, limited_cmd.w, kStage3AngularAccelLimit * dt);
+    target_v_applied = limited_cmd.v;
+    target_w_applied = limited_cmd.w;
     apply_velocity_targets(target_v_applied, target_w_applied, target_max_rpm);
 #endif
     for (int i = 0; i < kMotorCount; ++i) {
