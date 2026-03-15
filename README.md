@@ -1,218 +1,97 @@
 # cugo_pico_encoder_control
 
-Raspberry Pi Pico で CuGo のエンコーダ値を読み取り、差動駆動のモータ制御を行う Arduino スケッチです。ROS 側から `/cmd_vel` 相当の `v` (並進速度 [m/s]) と `w` (角速度 [rad/s]) を USB シリアル経由で受信し、Pico 内部で左右ホイールの目標 RPM に変換して PID 制御します。`cugo_ros_motorcontroller` (Apache License 2.0) をベースに Raspberry Pi Pico 向けへ移植した派生物であり、同ライセンスの条件に従って配布しています。
+<img src=docs/cugov4_board.png width=50%>
 
-## CuGoV3 / CuGoV4 仕様差分（要点）
+Raspberry Pi Pico で CuGo のエンコーダを読み取り、`/cmd_vel` 相当の `v`/`w` 指令で左右モータを PID 制御する Arduino スケッチです。
+`cugo_ros_motorcontroller` (Apache License 2.0) をベースに、Pico 向けへ移植した派生物です。
 
-| 項目 | CuGoV3 | CuGoV4 |
+## 対応機体とスケッチ
+
+| 機体 | スケッチ | 主要な違い |
 | --- | --- | --- |
-| エンコーダ入力 | 2相 (A/B) | 単相 `SPEED-OUT` |
-| エンコーダ配線例 | 左 `GP2/GP3`, 右 `GP8/GP9` | 左 `GP5`, 右 `GP7` |
-| パルス仕様 | 実機エンコーダ設定依存 | 30 pulse/rev（取説仕様） |
-| 方向情報 | A/B相から直接判定 | `SPEED-OUT` に方向は含まれないため、制御コマンド方向を使って符号付け |
-| ドライバ方向指令 | `PWM + DIR`（1本） | `FWD/REV`（HM-5100J）または `FWDのみ`（HP-5097J） |
-
-CuGoV4 のモータドライバ方式は `cugov4_pico_encoder_control/cugov4_pico_encoder_control.ino` の `kMotorDriverDirectionMode` で切り替えます。
+| CuGoV3 | `cugov3_pico_encoder_control/cugov3_pico_encoder_control.ino` | エンコーダ 2相 (A/B)、モータ制御 `PWM + DIR` |
+| CuGoV4 | `cugov4_pico_encoder_control/cugov4_pico_encoder_control.ino` | エンコーダ `SPEED-OUT` 単相、モータ制御 `FWD/REV` または `FWDのみ` |
 
 ## 主な機能
-- エンコーダ入力を割り込みで監視し、前後進を問わずカウントを積算
-- MotorController(PID + 低域通過フィルタ) により左右ホイールの回転数を安定化、PWM + 方向ピンでモータドライバを直接駆動
-- PacketSerial ベースのバイナリプロトコルで PC から目標 RPM を受信し、最新カウントを返信
-- 0.5 秒間通信が途絶すると自動停止するフェイルセーフ
+
+- 100 Hz（10 ms 周期）の制御ループで、左右モータの目標 RPM を PID + 低域通過フィルタで追従制御し、PWM/方向ピンを直接出力
+- エンコーダは割り込みで計測。CuGoV3 は A/B 相（CHANGE 割り込み）、CuGoV4 は `SPEED-OUT` 立ち上がり + DIR ピンで符号付きカウント
+- `TEST_STAGE=4` では PacketSerial のバイナリフレームを受信。チェックサム検証後に目標値を反映し、左右エンコーダ値・バッテリー電圧・推定 `v/w` を返信（CuGoV4 は加減速上限も受信してスルーレート制限を適用）
+- フェイルセーフは 100 ms 監視 × 5 回（0.5 秒）で発動し、モータ出力を停止。PacketSerial の overflow 検出時も即停止
 
 ## 必要環境
-- Raspberry Pi Pico (Arduino Mbed OS RP2040 core を想定)
-- PWM 入力に対応したモータドライバ (H ブリッジ / Phase-Enable など) ※想定ハード: Cytron MDDA20A
-- 左右ホイールのエンコーダ出力 (cugov3: A/B 相, cugov4: SPEED-OUT 単相)
-- USB ケーブル (PC と Pico を接続)
 
-メインスケッチ使用ライブラリ: PacketSerial（cugov3 では Servo も使用）
+- Raspberry Pi Pico（RP2040）
+- CuGoV3 または CuGoV4 本体
+- モータドライバ
+  - CuGoV3: Cytron MDDA20A
+  - CuGoV4: BLVD10KM（ブラシレスモータ用）
+- 左右ホイールのエンコーダ出力（CuGoV3: A/B 相、CuGoV4: `SPEED-OUT` 単相）
+- USB ケーブル（PC と Pico を接続）
 
-## ファイル構成
-```
-cugo_pico_encoder_control/
-├── README.md
-├── LICENSE
-├── cugov3_pico_encoder_control/
-│   ├── MotorController.cpp
-│   ├── MotorController.h
-│   └── cugov3_pico_encoder_control.ino
-├── cugov4_pico_encoder_control/
-│   ├── CugoV4MotorController.cpp
-│   ├── CugoV4MotorController.h
-│   └── cugov4_pico_encoder_control.ino
-└── test/
-    ├── motor_pwm_test/motor_pwm_test.ino
-    └── encoder_count_test/encoder_count_test.ino
-```
+メインスケッチ使用ライブラリ: PacketSerial（CuGoV3 では Servo も使用）
 
-## テストスケッチ（共通）
-`test/motor_pwm_test/motor_pwm_test.ino` と `test/encoder_count_test/encoder_count_test.ino` は、`DRIVER_TYPE` で以下を切り替えできます。
+## クイックスタート
 
-- `0`: `DC`
-- `1`: `BLDC (HM-5100J)`
-- `2`: `BLDC (HP-5097J)`
+以下は開発用 PC（`arduino-cli` / Arduino IDE を使う環境）を想定した手順です。
+インストールの具体手順は [開発環境・ビルド手順](docs/development.md) の「方法1: ターミナル（Arduino CLI）でセットアップ」を参照してください。
+Raspberry Pi 5 上からでも同様にビルド・書き込みできます。詳細は [開発環境・ビルド手順](docs/development.md) の「Quick Start (Raspberry Pi 5)」を参照してください。
 
-左右選択はそれぞれ `USE_LEFT_MOTOR` / `USE_LEFT_ENCODER` を使います。
+1. Arduino IDE または `arduino-cli` を準備し、`Raspberry Pi Pico / RP2040 by Earle Philhower, III` をインストール。
+2. ライブラリ `PacketSerial` をインストール。
+3. 使用機体に応じて V3/V4 の `.ino` を開く。
+4. 必要に応じて以下を実機に合わせて調整。
+   - `PIN_*` 定数
+   - `kWheelRadius*` / `kTread` / `kReductionRatio`
+   - PID ゲイン、エンコーダ分解能
+5. Pico へ書き込み。
+   ```bash
+   arduino-cli compile --fqbn rp2040:rp2040:rpipico cugov3_pico_encoder_control
+   arduino-cli upload  --fqbn rp2040:rp2040:rpipico -p /dev/ttyACM0 cugov3_pico_encoder_control
 
-`motor_pwm_test` はデフォルトで `kDutyRatio = 0.1f`（10%）です。
+   arduino-cli compile --fqbn rp2040:rp2040:rpipico cugov4_pico_encoder_control
+   arduino-cli upload  --fqbn rp2040:rp2040:rpipico -p /dev/ttyACM0 cugov4_pico_encoder_control
+   ```
+6. 通信テスト（PC から指令送信）。
+   ```bash
+   python3 -m pip install --user pyserial cobs
+   python3 scripts/send_test_cmd_vel.py --port /dev/ttyACM0 --v 0.1 --w 0.0 --hz 10
+   ```
 
-### テストビルド例
-```bash
-# motor_pwm_test
-arduino-cli compile --fqbn rp2040:rp2040:rpipico test/motor_pwm_test
-arduino-cli compile --fqbn rp2040:rp2040:rpipico --build-property compiler.cpp.extra_flags="-DDRIVER_TYPE=1" test/motor_pwm_test
-arduino-cli compile --fqbn rp2040:rp2040:rpipico --build-property compiler.cpp.extra_flags="-DDRIVER_TYPE=2" test/motor_pwm_test
+## TEST_STAGE
 
-# encoder_count_test
-arduino-cli compile --fqbn rp2040:rp2040:rpipico test/encoder_count_test
-arduino-cli compile --fqbn rp2040:rp2040:rpipico --build-property compiler.cpp.extra_flags="-DDRIVER_TYPE=1" test/encoder_count_test
-arduino-cli compile --fqbn rp2040:rp2040:rpipico --build-property compiler.cpp.extra_flags="-DDRIVER_TYPE=2" test/encoder_count_test
-```
+| 値 | 用途 |
+| --- | --- |
+| `1` | エンコーダカウント確認 |
+| `2` | 一定 RPM 指令テスト |
+| `3` | コード内 `kTestTargetV` / `kTestTargetW` で走行 |
+| `4` | PacketSerial による PC 通信（通常運用） |
 
-## 使い方
-1. Arduino IDE (または `arduino-cli`) に「Raspberry Pi Pico / RP2040 by Earle Philhower, III」をインストールし、ボードとして Raspberry Pi Pico を選択します。
-2. 使用する機体に応じて `cugov3_pico_encoder_control/cugov3_pico_encoder_control.ino` または `cugov4_pico_encoder_control/cugov4_pico_encoder_control.ino` を開き、`PIN_*` 定数や PID ゲイン / エンコーダ分解能、車体諸元（ホイール半径 / トレッド / 減速比）が実機と異なる場合は調整してください。
-3. 動作確認の段階に応じて `TEST_STAGE` マクロを設定できます。`TEST_STAGE=1` でエンコーダカウントのみシリアルへ出力、`TEST_STAGE=2` で一定RPMを指示して MotorController の挙動確認、`TEST_STAGE=3` でコード内指定の `v`/`w` による走行、`TEST_STAGE=4` で PacketSerial 入出力を使用します。
-4. Pico を USB 接続し、Arduino IDE の「マイコンボードに書き込む」でビルド・転送します（UF2 を手動でコピーする場合は BOOTSEL ボタンを押したまま接続してください）。CLI の場合は `arduino-cli compile --fqbn rp2040:rp2040:rpipico <sketch_dir>` → `arduino-cli upload -p /dev/ttyACM0 --fqbn ... <sketch_dir>` で書き込めます (`<sketch_dir>` は `cugov3_pico_encoder_control` または `cugov4_pico_encoder_control`)。
-5. `TEST_STAGE=1/2/3` はシリアルモニタ (115200 bps) を使って挙動を確認してください。`TEST_STAGE=4` で Pico に書き込んだら、PC 側の ROS パッケージ (例: `cugo_ros2_control2`) を起動し、USB CDC ポートに PacketSerial フォーマットで `v`/`w` を送信します。Pico は受け取った `v`/`w` から左右目標 RPM を算出して制御し、エンコーダカウントを返信します。
-6. PC から手軽にテストする場合は `scripts/send_test_cmd_vel.py --port /dev/ttyACM0 --v 0.1 --w 0.0 --hz 10` のように実行すると、指定した `v`/`w` を一定周期で送出し、返信のエンコーダカウントを表示します（`pyserial` と `cobs` が必要。例: `python3 -m pip install --user pyserial cobs`）。
-
-## TEST_STAGE 3（コード内の v/w 指定）メモ
-`cugov3_pico_encoder_control.ino` または `cugov4_pico_encoder_control.ino` の `kTestTargetV` と `kTestTargetW` を書き換えることで、Pico 単体で走行テストできます。
-
-- 直進: `kTestTargetW = 0.0f` のまま `kTestTargetV` を調整
-- その場旋回: `kTestTargetV = 0.0f` にして `kTestTargetW` を設定
-- 旋回半径の目安: `w = v / R`（R は旋回半径 [m]）
-- 片輪ほぼ停止で旋回させる目安: `w ≈ 2*v/kTread`（`kTread = 0.394`）
-
-低速から試す場合は `kTestTargetV = 0.01f`、その場旋回なら `kTestTargetW = 0.05f` 付近から試すと安全です。回転方向は `w` の符号で切り替えできます。
+`TEST_STAGE=3` では `.ino` の `kTestTargetV` / `kTestTargetW` を変更して、Pico 単体で走行確認できます。
 
 ## 通信プロトコル
+
 送受信ともに 8 バイトのヘッダ + 64 バイトのボディで構成します。ヘッダ 6〜7 バイト目はボディのチェックサム (16-bit one's complement)。
 
 - PC→Pico: ボディ 0〜3 バイトに `v` [m/s]、4〜7 バイトに `w` [rad/s] を `float` (LE) で格納してください。Pico 側で左右ホイールの線速度/角速度に変換し、モータ RPM を算出します。
 - Pico→PC: ボディ 0〜3 バイトに左エンコーダ、4〜7 バイトに右エンコーダのカウント値 (いずれも `int32_t`) を格納します。8〜11 バイトにバッテリー電圧 [V]、12〜15 バイトに `v` [m/s]、16〜19 バイトに `w` [rad/s] を `float` (LE) で格納します。
 
-## 補足事項
-- 現状は単純な 2 ホイール構成のみ対応しています。RC モードや Ethernet 通信などは実装していません。
-- Pico 側の PWM ピン割り当ては使用するドライバに合わせて変更してください（現状デフォルトは GP17/GP19）。
-- パケットを 0.5 秒以上受信しないと自動で停止するため、ホスト側は定期的に指令を送ってください。
-- 本ソフトウェアは Apache License 2.0 のもとで配布されています。元プロジェクト (`cugo_ros_motorcontroller`) の著作権表示とライセンス文書は `LICENSE` に含まれており、派生物である本パッケージでも継承しています。
+## ディレクトリ構成
 
---- 
-## Raspberry Pi Pico での配線
-<img src=docs/pico_pinout.png width=60%>     
+```text
+cugo_pico_encoder_control/
+├── cugov3_pico_encoder_control/   # CuGoV3 用スケッチ
+├── cugov4_pico_encoder_control/   # CuGoV4 用スケッチ
+├── scripts/send_test_cmd_vel.py   # シリアル送信テスト用
+├── test/                           # 単機能テストスケッチ群
+└── docs/                           # 配線・開発手順などの詳細ドキュメント
+```
 
-### cugov4 配線（添付図の信号名対応）
-`cugov4_pico_encoder_control/cugov4_pico_encoder_control.ino` のデフォルト定数は、以下の GPIO 割り当てです。
+## 詳細ドキュメント
 
-| 信号名 | GPIO | コード内定数 |
-| --- | --- | --- |
-| DIR1_L_FWD | GP2 | `PIN_MOTOR_L_DIR_FWD` |
-| DIR1_L_REV | GP3 | `PIN_MOTOR_L_DIR_REV` |
-| SPEED-OUT_L | GP5 | `PIN_ENCODER_L_A` |
-| SPEED-OUT_R | GP7 | `PIN_ENCODER_R_A` |
-| DIR2_R_FWD | GP8 | `PIN_MOTOR_R_DIR_FWD` |
-| DIR2_R_REV | GP9 | `PIN_MOTOR_R_DIR_REV` |
-| PWM1_L | GP17 | `PIN_MOTOR_L_PWM` |
-| PWM1_R (回路ラベル PWM2_R) | GP19 | `PIN_MOTOR_R_PWM` |
+- [配線とピンアサイン](docs/hardware.md)
+- [開発環境・ビルド手順](docs/development.md)
 
-- 前進は `DIR*_FWD=HIGH`, `DIR*_REV=LOW`、後退は `DIR*_FWD=LOW`, `DIR*_REV=HIGH` で制御します。
-- cugov4 ではエンコーダを `SPEED-OUT_L/R` の単相信号で受けるため、`.ino` では `PIN_ENCODER_L_A` / `PIN_ENCODER_R_A` のみを使用します。
-- `SPEED-OUT` は取扱説明書どおり「モーター出力軸 1 回転あたり 30 パルス」を使用し、スケッチでは立ち上がりエッジでカウントします（`kSpeedOutPulsePerRev = 30`）。
-- BUZZER (`GP4`)、LED1 (`GP21`)、LED2 (`GP22`)、BAT_LED (`GP20`)、ADC_BAT (`GP26`) は cugov3 と同じ割り当てです。
+## ライセンス
 
-### cugov4 モータドライバ切替
-`cugov4_pico_encoder_control/cugov4_pico_encoder_control.ino` の `kMotorDriverDirectionMode` で切り替えます。
-
-- `MotorDriverDirectionMode::kFwdOnly` : HP-5097J 系（方向指令は FWD ピンのみ）
-- `MotorDriverDirectionMode::kFwdRev` : HM-5100J 系（FWD/REV を個別に使用）
-
-`kFwdOnly` のときは `DIR*_REV` を未使用（LOW固定）にし、`DIR*_FWD` のみで方向を制御します。`kFwdRev` のときは `DIR*_FWD` / `DIR*_REV` の両方を使って方向を制御します。
-
-### cugov3 エンコーダ (AMT102-V 例)
-Pico 版スケッチでは以下の GPIO 割り当てで配線する想定です ( `cugov3_pico_encoder_control/cugov3_pico_encoder_control.ino` の `PIN_ENCODER_*` 定数)。
-
-| 信号 | 左ホイール GPIO | 右ホイール GPIO | 備考 |
-| --- | --- | --- | --- |
-| A相 (黄色 / pin1) | GP2 | GP8 | `PIN_ENCODER_L_A` / `PIN_ENCODER_R_A` |
-| B相 (青色 / pin3) | GP3 | GP9 | `PIN_ENCODER_L_B` / `PIN_ENCODER_R_B` |
-| Z相 (紫色 / pin4) | 未配線 (NC) | 未配線 (NC) | 本スケッチでは未使用 |
-| 5V (橙色 / pin2) | VBUS または外部 5V | VBUS または外部 5V | エンコーダ電源 |
-| GND (茶色 / pin5) | 任意の GND | 任意の GND | Pico と共通 GND に接続 |
-
-Pico の GPIO は 3.3V 系なので、AMT102-V など 5V ロジック出力のエンコーダをそのまま接続しないでください。オープンコレクタ設定＋3.3V プルアップ、もしくは[レベルシフタ](https://akizukidenshi.com/catalog/g/g113837/)等で 3.3V 以内に収めてから `GP2/GP3/GP8/GP9` へ入力してください。向きが合わない場合はソース内の `PIN_ENCODER_*` を変更すれば任意の GPIO へ再割り当てできます。
-
-### cugov3 モータドライバ (PWM/Dir)
-`cugov3_pico_encoder_control.ino` のデフォルト定数では、モータドライバの PWM / 方向ピンを以下の GPIO に割り当てています。Cytron MDDA20A（デュアル DC モータドライバ、PWM+DIR 方式）を想定した配線です。
-
-| モータ | PWM ピン (`PIN_MOTOR_*_PWM`) | DIR ピン (`PIN_MOTOR_*_DIR`) |
-| --- | --- | --- |
-| 左車輪 | GP17 | GP16 |
-| 右車輪 | GP19 | GP18 |
-
-Phase/Enable 形式のドライバであれば PWM ピンを Enable へ、DIR ピンを Phase へ接続してください。IN/IN 形式の H ブリッジを使う場合は、PWM ピンを片側入力に接続し、もう片側入力を DIR で制御できるよう配線します。別の GPIO を使いたい場合は `.ino` 内の `PIN_MOTOR_*` 定数を書き換えれば対応できます (PWM 可能な GPIO を割り当ててください)。
-
----
-## 追加ピンアサイン
-以下の GPIO は周辺機能用に割り当てています。
-
-| GPIO | 機能 | 備考 |
-| --- | --- | --- |
-| GP4 | BUZZER | ブザー出力 |
-| GP22 | LED2 | インジケータ LED |
-| GP21 | LED1 | インジケータ LED |
-| GP20 | BAT_LED_PWM | バッテリー LED の PWM 制御 |
-| GP15 | SW1 | ユーザスイッチ入力 (`PIN_USER_BUTTON`) |
-| GP26 | ADC_BAT | バッテリー電圧の ADC 取得 |
-
---- 
-## 開発環境メモ
-
-### 開発用 PC / IDE
-- Ubuntu 22.04 LTS + VS Code + Arduino 拡張機能 (`arduino-cli` を外部コマンドとして利用)
-
-### Arduino CLI セットアップとビルド
-1. 公式バイナリを入手して配置します（Snap 版では 32bit 依存ライブラリを参照できない場合があるため）。
-    ```bash
-    cd /tmp
-    wget https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz
-    tar xf arduino-cli_latest_Linux_64bit.tar.gz
-    sudo mv arduino-cli /usr/local/bin/
-    ```
-2. 初期設定と Philhower 版 RP2040 コアの登録を行います。
-    ```bash
-    arduino-cli config init
-    arduino-cli config set board_manager.additional_urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
-    arduino-cli core update-index
-    arduino-cli core install rp2040:rp2040
-    ```
-3. ライブラリ依存（PacketSerial）を追加します。Servo はボードパッケージ同梱版を利用できます。
-    ```bash
-    arduino-cli lib install PacketSerial
-    ```
-4. スケッチをビルド／書き込みします。`XDG_CACHE_HOME=/path/to/cache arduino-cli ...` のように指定すると、キャッシュを任意ディレクトリへ変更可能です。Pico 2 (RP2350) を使う場合は FQBN を Pico 2 用に差し替えてください（例: `rp2040:rp2040:rpipico2`。`arduino-cli board listall rp2040:rp2040` で確認できます）。
-    ```bash
-    arduino-cli compile --fqbn rp2040:rp2040:rpipico cugov3_pico_encoder_control
-    arduino-cli upload  --fqbn rp2040:rp2040:rpipico -p /dev/ttyACM0 cugov3_pico_encoder_control
-    arduino-cli compile --fqbn rp2040:rp2040:rpipico cugov4_pico_encoder_control
-    arduino-cli upload  --fqbn rp2040:rp2040:rpipico -p /dev/ttyACM0 cugov4_pico_encoder_control
-    ```
-
-
-### VS Code での Arduino 拡張利用
-VS Code 上では Arduino 拡張機能を使って `arduino-cli` を呼び出しています
-
-1. 拡張ビューで "Arduino" (Microsoft) をインストールします。
-2. `.vscode/settings.json` に以下の設定を追加し、CLI パスや FQBN を固定します。
-    ```json
-    {
-      "arduino.path": "/usr/local/bin/arduino-cli",
-      "arduino.useArduinoCli": true,
-      "arduino.defaultBoard": "rp2040:rp2040:rpipico",
-      "arduino.defaultBaudRate": 115200,
-      "arduino.defaultPort": "/dev/ttyACM0"
-    }
-    ```
-3. ステータスバーでボード/ポートを選択し、`Arduino: Verify` や `Arduino: Upload` を実行すれば CLI と同じ手順でビルド／書き込みできます。
+Apache License 2.0。詳細は [LICENSE](LICENSE) を参照してください。
