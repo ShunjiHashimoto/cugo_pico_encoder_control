@@ -97,7 +97,7 @@ constexpr int SEND_BATTERY_VOLT_PTR = 8;
 constexpr int SEND_V_PTR = 12;
 constexpr int SEND_W_PTR = 16;
 
-constexpr float kDefaultMaxRpm = 3000.0f;
+constexpr float kDefaultMaxRpm = 6000.0f;
 constexpr float kTwoPi = 6.28318530718f;
 constexpr float kStage2TestRpm = -100.0f;   // Keep low for initial bring-up safety.
 constexpr float kTestTargetV = 0.0f;   // [m/s]
@@ -223,7 +223,7 @@ float clamp_rpm(float rpm, float max_rpm) {
 float resolve_max_rpm(uint16_t product_id) {
   switch (product_id) {
     case 0x0002:
-      return 3000.0f;  // example for CuGo V4
+      return 6000.0f;  // example for CuGo V4
     case 0x0003:
       return 300.0f;  // example for CuGo V3i
     default:
@@ -240,16 +240,6 @@ float linear_to_motor_rpm(float linear_velocity, float wheel_radius) {
 float motor_rpm_to_linear_velocity_with_radius(float motor_rpm, float wheel_radius) {
   float wheel_rps = (motor_rpm / 60.0f) / kReductionRatio;
   return wheel_rps * kTwoPi * wheel_radius;
-}
-
-float slew_towards(float current, float target, float max_step) {
-  if (target > current + max_step) {
-    return current + max_step;
-  }
-  if (target < current - max_step) {
-    return current - max_step;
-  }
-  return target;
 }
 
 float positive_or_default(float value, float fallback) {
@@ -504,8 +494,24 @@ void job_10ms() {
     VelocityCommand limited_cmd = clamp_velocity_command_to_max_rpm(target_v_cmd, target_w_cmd, target_max_rpm);
     float v_limit = (limited_cmd.v >= target_v_applied) ? target_v_accel_limit : target_v_decel_limit;
     float w_limit = (limited_cmd.w >= target_w_applied) ? target_w_accel_limit : target_w_decel_limit;
-    target_v_applied = slew_towards(target_v_applied, limited_cmd.v, v_limit * dt);
-    target_w_applied = slew_towards(target_w_applied, limited_cmd.w, w_limit * dt);
+    float v_step = v_limit * dt;
+    float w_step = w_limit * dt;
+    float v_err = limited_cmd.v - target_v_applied;
+    float w_err = limited_cmd.w - target_w_applied;
+    if (v_err > v_step) {
+      target_v_applied += v_step;
+    } else if (v_err < -v_step) {
+      target_v_applied -= v_step;
+    } else {
+      target_v_applied = limited_cmd.v;
+    }
+    if (w_err > w_step) {
+      target_w_applied += w_step;
+    } else if (w_err < -w_step) {
+      target_w_applied -= w_step;
+    } else {
+      target_w_applied = limited_cmd.w;
+    }
     apply_velocity_targets(target_v_applied, target_w_applied, target_max_rpm);
 #endif
     for (int i = 0; i < kMotorCount; ++i) {
